@@ -69,6 +69,43 @@ export default class Physics {
     return { rigidBody, collider };
   }
 
+  createConvexHull({
+    position,
+    points,
+    type = 'fixed',
+    rotation = null,
+    canSleep = true,
+    restitution = 0.04,
+    friction = 1.3,
+    density = 1
+  }) {
+    const bodyDesc =
+      type === 'dynamic' ? RAPIER.RigidBodyDesc.dynamic() : RAPIER.RigidBodyDesc.fixed();
+
+    bodyDesc.setTranslation(position.x, position.y, position.z);
+    bodyDesc.setCanSleep(canSleep);
+
+    if (rotation) {
+      bodyDesc.setRotation(rotation);
+    }
+
+    const rigidBody = this.world.createRigidBody(bodyDesc);
+    const colliderDesc = RAPIER.ColliderDesc.convexHull(
+      points instanceof Float32Array ? points : new Float32Array(points)
+    );
+
+    if (!colliderDesc) {
+      throw new Error('Failed to build convex hull collider.');
+    }
+
+    colliderDesc.setRestitution(restitution);
+    colliderDesc.setFriction(friction);
+    colliderDesc.setDensity(density);
+
+    const collider = this.world.createCollider(colliderDesc, rigidBody);
+    return { rigidBody, collider };
+  }
+
   update(delta) {
     this.accumulator += delta;
 

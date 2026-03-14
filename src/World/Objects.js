@@ -153,12 +153,10 @@ export default class Objects {
     const thickness = 0.36;
     const angle = Math.PI / 22;
     const roadTop = 0.12;
-    const halfSlopeDepth = slopeDepth * 0.5;
     const halfThickness = thickness * 0.5;
-    const rise = Math.sin(angle) * halfSlopeDepth;
-    const surfaceOffset = Math.cos(angle) * halfThickness;
-    const slopeCenterY = roadTop - surfaceOffset + rise;
-    const deckTop = roadTop + slopeDepth * Math.sin(angle);
+    const halfSlopeDepth = slopeDepth * 0.5;
+    const rampHeight = slopeDepth * Math.sin(angle);
+    const deckTop = roadTop + rampHeight;
     const deckCenterY = deckTop - halfThickness;
     const slopeOffsetZ = deckDepth * 0.5 + halfSlopeDepth;
 
@@ -185,26 +183,25 @@ export default class Objects {
       }
     });
 
-    [
-      { z: centerZ + slopeOffsetZ, rotationX: angle },
-      { z: centerZ - slopeOffsetZ, rotationX: -angle }
-    ].forEach(({ z, rotationX }) => {
-      const euler = new THREE.Euler(rotationX, 0, 0);
-      const quaternion = new THREE.Quaternion().setFromEuler(euler);
+    [centerZ + slopeOffsetZ, centerZ - slopeOffsetZ].forEach((z) => {
+      const rotationY = z > centerZ ? 0 : Math.PI;
+      const quaternion = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(0, rotationY, 0)
+      );
       const slope = new THREE.Mesh(
-        new THREE.BoxGeometry(width, thickness, slopeDepth),
+        this.createRampGeometry(width, rampHeight, slopeDepth),
         rampMaterial
       );
-      slope.position.set(0, slopeCenterY, z);
-      slope.rotation.copy(euler);
+      slope.position.set(0, roadTop, z);
+      slope.rotation.y = rotationY;
       slope.castShadow = true;
       slope.receiveShadow = true;
       slope.frustumCulled = true;
       this.group.add(slope);
 
-      this.application.physics.createBox({
-        position: new THREE.Vector3(0, slopeCenterY, z),
-        size: new THREE.Vector3(width, thickness, slopeDepth),
+      this.application.physics.createConvexHull({
+        position: new THREE.Vector3(0, roadTop, z),
+        points: this.createRampHullPoints(width, rampHeight, slopeDepth),
         type: 'fixed',
         rotation: quaternion,
         friction: 2.2
@@ -238,6 +235,48 @@ export default class Objects {
       beacon.frustumCulled = true;
       this.group.add(beacon);
     });
+  }
+
+  createRampGeometry(width, height, depth) {
+    const halfWidth = width * 0.5;
+    const halfDepth = depth * 0.5;
+    const vertices = new Float32Array([
+      -halfWidth, 0, halfDepth,
+      halfWidth, 0, halfDepth,
+      -halfWidth, 0, -halfDepth,
+      halfWidth, 0, -halfDepth,
+      -halfWidth, height, -halfDepth,
+      halfWidth, height, -halfDepth
+    ]);
+    const indices = [
+      0, 2, 1,
+      1, 2, 3,
+      0, 1, 4,
+      1, 5, 4,
+      2, 4, 3,
+      3, 4, 5,
+      0, 4, 2,
+      1, 3, 5
+    ];
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+  }
+
+  createRampHullPoints(width, height, depth) {
+    const halfWidth = width * 0.5;
+    const halfDepth = depth * 0.5;
+
+    return new Float32Array([
+      -halfWidth, 0, halfDepth,
+      halfWidth, 0, halfDepth,
+      -halfWidth, 0, -halfDepth,
+      halfWidth, 0, -halfDepth,
+      -halfWidth, height, -halfDepth,
+      halfWidth, height, -halfDepth
+    ]);
   }
 
   createSlalomChallenge() {

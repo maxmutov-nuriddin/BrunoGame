@@ -95,6 +95,17 @@ export default class Car {
     this.steerValue = THREE.MathUtils.damp(this.steerValue, 0, 14, 1 / 60);
   }
 
+  stabilizeStraightLine(delta, throttle, steer) {
+    if (!this.grounded || throttle === 0 || Math.abs(steer) > 0.001) {
+      return;
+    }
+
+    const angvel = this.rigidBody.angvel();
+    const correctedYaw = THREE.MathUtils.damp(angvel.y, 0, 7.5, delta);
+    this.rigidBody.setAngvel({ x: 0, y: correctedYaw, z: 0 }, true);
+    this.steerValue = THREE.MathUtils.damp(this.steerValue, 0, 10.5, delta);
+  }
+
   createVisuals() {
     const matcap = this.application.resources.items.matcap;
 
@@ -104,25 +115,25 @@ export default class Car {
     const glassMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#7ac7ff' });
 
     const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 3.05), chassisMaterial);
-    chassis.position.y = 0.02;
+    chassis.position.y = 0.14;
     chassis.castShadow = true;
     chassis.receiveShadow = true;
     this.group.add(chassis);
 
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.54, 1.32), trimMaterial);
-    cabin.position.set(0, 0.34, -0.12);
+    cabin.position.set(0, 0.48, -0.12);
     cabin.castShadow = true;
     cabin.receiveShadow = true;
     this.group.add(cabin);
 
     const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.3, 1.06), glassMaterial);
-    windshield.position.set(0, 0.34, -0.12);
+    windshield.position.set(0, 0.48, -0.12);
     windshield.castShadow = true;
     windshield.receiveShadow = true;
     this.group.add(windshield);
 
     const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.1, 0.26), trimMaterial);
-    spoiler.position.set(0, 0.25, 1.18);
+    spoiler.position.set(0, 0.38, 1.18);
     spoiler.castShadow = true;
     this.group.add(spoiler);
 
@@ -131,10 +142,10 @@ export default class Car {
     wheelGeometry.rotateZ(Math.PI * 0.5);
 
     const wheelAnchors = [
-      { x: -0.92, y: -0.28, z: -0.98 },
-      { x: 0.92, y: -0.28, z: -0.98 },
-      { x: -0.92, y: -0.28, z: 1.02 },
-      { x: 0.92, y: -0.28, z: 1.02 }
+      { x: -0.92, y: -0.38, z: -0.98 },
+      { x: 0.92, y: -0.38, z: -0.98 },
+      { x: -0.92, y: -0.38, z: 1.02 },
+      { x: 0.92, y: -0.38, z: 1.02 }
     ];
 
     wheelAnchors.forEach((anchor) => {
@@ -158,7 +169,7 @@ export default class Car {
       new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.16 })
     );
     shadow.rotation.x = -Math.PI * 0.5;
-    shadow.position.y = -0.32;
+    shadow.position.y = -0.42;
     this.group.add(shadow);
   }
 
@@ -166,10 +177,10 @@ export default class Car {
     const direction = { x: 0, y: -1, z: 0 };
     const axle = { x: -1, y: 0, z: 0 };
     const wheelConnections = [
-      { x: -0.92, y: -0.02, z: -1.02 },
-      { x: 0.92, y: -0.02, z: -1.02 },
-      { x: -0.92, y: -0.02, z: 1.02 },
-      { x: 0.92, y: -0.02, z: 1.02 }
+      { x: -0.92, y: -0.08, z: -1.02 },
+      { x: 0.92, y: -0.08, z: -1.02 },
+      { x: -0.92, y: -0.08, z: 1.02 },
+      { x: 0.92, y: -0.08, z: 1.02 }
     ];
 
     wheelConnections.forEach((connection) => {
@@ -208,9 +219,17 @@ export default class Car {
     const currentSpeed = this.vehicle.currentVehicleSpeed();
     const speedRatio = THREE.MathUtils.clamp(Math.abs(currentSpeed) / 24, 0, 1);
     const targetEngineForce =
-      throttle > 0 ? -(boost ? 138 : 96) * throttle : throttle < 0 ? 54 * -throttle : 0;
+      throttle > 0
+        ? -(boost ? 138 : 96) * throttle
+        : throttle < 0
+          ? (Math.abs(currentSpeed) < 2 ? 88 : 76) * -throttle
+          : 0;
+    const changingDirection =
+      throttle !== 0 &&
+      Math.sign(throttle) !== Math.sign(currentSpeed) &&
+      Math.abs(currentSpeed) > 2.8;
     const targetBrakeForce =
-      brake || (throttle !== 0 && Math.sign(throttle) !== Math.sign(currentSpeed) && Math.abs(currentSpeed) > 1.5)
+      brake || changingDirection
         ? 2.6
         : throttle === 0
           ? 1.15
@@ -220,13 +239,18 @@ export default class Car {
 
     this.grounded = this.getWheelContactCount() > 0;
     this.engineForce = this.moveTowards(this.engineForce, targetEngineForce, 180 * delta);
-    this.brakeForce = this.moveTowards(this.brakeForce, targetBrakeForce, 8 * delta);
+    this.brakeForce = this.moveTowards(
+      this.brakeForce,
+      targetBrakeForce,
+      (throttle !== 0 ? 16 : 8) * delta
+    );
     this.steerValue = THREE.MathUtils.damp(
       this.steerValue,
       steer * steeringLimit,
       steeringResponse,
       delta
     );
+    this.stabilizeStraightLine(delta, throttle, steer);
 
     this.frontWheelIndices.forEach((index) => {
       this.vehicle.setWheelSteering(index, this.steerValue);
