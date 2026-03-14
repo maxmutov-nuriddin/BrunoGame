@@ -17,6 +17,7 @@ export default class Car {
     this.engineForce = 0;
     this.brakeForce = 0;
     this.steerValue = 0;
+    this.visualPitch = 0;
     this.suspensionRestLength = 0.18;
     this.wheelRadius = 0.34;
 
@@ -89,7 +90,7 @@ export default class Car {
     const angvel = this.rigidBody.angvel();
 
     this.rigidBody.setLinvel({ x: 0, y: linvel.y, z: 0 }, true);
-    this.rigidBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.rigidBody.setAngvel({ x: angvel.x, y: 0, z: angvel.z }, true);
     this.engineForce = 0;
     this.brakeForce = Math.max(this.brakeForce, 1.8);
     this.steerValue = THREE.MathUtils.damp(this.steerValue, 0, 14, 1 / 60);
@@ -102,40 +103,91 @@ export default class Car {
 
     const angvel = this.rigidBody.angvel();
     const correctedYaw = THREE.MathUtils.damp(angvel.y, 0, 7.5, delta);
-    this.rigidBody.setAngvel({ x: 0, y: correctedYaw, z: 0 }, true);
+    this.rigidBody.setAngvel({ x: angvel.x, y: correctedYaw, z: angvel.z }, true);
     this.steerValue = THREE.MathUtils.damp(this.steerValue, 0, 10.5, delta);
   }
 
   createVisuals() {
     const matcap = this.application.resources.items.matcap;
+    this.visualRoot = new THREE.Group();
+    this.group.add(this.visualRoot);
 
-    const chassisMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#ff7b68' });
-    const trimMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#f7f8ff' });
+    const chassisMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#b7bec8' });
+    const trimMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#707887' });
     const tireMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#1b2131' });
-    const glassMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#7ac7ff' });
+    const glassMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#9cdcff' });
+    const accentMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#ff934f' });
 
-    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 3.05), chassisMaterial);
-    chassis.position.y = 0.14;
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.84, 0.46, 3.34), chassisMaterial);
+    chassis.position.y = 0.2;
     chassis.castShadow = true;
     chassis.receiveShadow = true;
-    this.group.add(chassis);
+    this.visualRoot.add(chassis);
 
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.54, 1.32), trimMaterial);
-    cabin.position.set(0, 0.48, -0.12);
-    cabin.castShadow = true;
-    cabin.receiveShadow = true;
-    this.group.add(cabin);
+    const underBody = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.18, 2.92), trimMaterial);
+    underBody.position.y = -0.02;
+    underBody.castShadow = true;
+    underBody.receiveShadow = true;
+    this.visualRoot.add(underBody);
 
-    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.3, 1.06), glassMaterial);
-    windshield.position.set(0, 0.48, -0.12);
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.34, 1.34), chassisMaterial);
+    bed.position.set(0, 0.44, 0.82);
+    bed.castShadow = true;
+    bed.receiveShadow = true;
+    this.visualRoot.add(bed);
+
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.16, 1.02), chassisMaterial);
+    hood.position.set(0, 0.56, -0.92);
+    hood.rotation.x = 0.18;
+    hood.castShadow = true;
+    hood.receiveShadow = true;
+    this.visualRoot.add(hood);
+
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.13, 1.42), chassisMaterial);
+    roof.position.set(0, 0.98, -0.24);
+    roof.rotation.x = 0.36;
+    roof.castShadow = true;
+    roof.receiveShadow = true;
+    this.visualRoot.add(roof);
+
+    const rearSlope = new THREE.Mesh(new THREE.BoxGeometry(1.46, 0.12, 0.92), chassisMaterial);
+    rearSlope.position.set(0, 0.86, 0.46);
+    rearSlope.rotation.x = -0.52;
+    rearSlope.castShadow = true;
+    rearSlope.receiveShadow = true;
+    this.visualRoot.add(rearSlope);
+
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.08, 1.06), glassMaterial);
+    windshield.position.set(0, 0.9, -0.2);
+    windshield.rotation.x = 0.36;
     windshield.castShadow = true;
     windshield.receiveShadow = true;
-    this.group.add(windshield);
+    this.visualRoot.add(windshield);
 
-    const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.1, 0.26), trimMaterial);
-    spoiler.position.set(0, 0.38, 1.18);
-    spoiler.castShadow = true;
-    this.group.add(spoiler);
+    const sidePanels = [
+      { x: -0.88, y: 0.14, z: -0.96, size: [0.2, 0.34, 0.86] },
+      { x: 0.88, y: 0.14, z: -0.96, size: [0.2, 0.34, 0.86] },
+      { x: -0.88, y: 0.14, z: 1.02, size: [0.2, 0.34, 0.86] },
+      { x: 0.88, y: 0.14, z: 1.02, size: [0.2, 0.34, 0.86] }
+    ];
+
+    sidePanels.forEach(({ x, y, z, size }) => {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(...size), trimMaterial);
+      panel.position.set(x, y, z);
+      panel.castShadow = true;
+      panel.receiveShadow = true;
+      this.visualRoot.add(panel);
+    });
+
+    const frontLight = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.05, 0.08), accentMaterial);
+    frontLight.position.set(0, 0.48, -1.64);
+    frontLight.castShadow = true;
+    this.visualRoot.add(frontLight);
+
+    const rearLight = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.06, 0.08), accentMaterial);
+    rearLight.position.set(0, 0.52, 1.66);
+    rearLight.castShadow = true;
+    this.visualRoot.add(rearLight);
 
     this.wheelHolders = [];
     const wheelGeometry = new THREE.CylinderGeometry(this.wheelRadius, this.wheelRadius, 0.25, 18);
@@ -155,7 +207,7 @@ export default class Car {
       holder.userData.baseY = anchor.y;
       wheel.castShadow = true;
       holder.add(wheel);
-      this.group.add(holder);
+      this.visualRoot.add(holder);
       this.wheelHolders.push(holder);
     });
 
@@ -165,12 +217,28 @@ export default class Car {
     this.rearWheelRight = this.wheelHolders[3];
 
     const shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(1.8, 24),
+      new THREE.CircleGeometry(2.1, 28),
       new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.16 })
     );
     shadow.rotation.x = -Math.PI * 0.5;
     shadow.position.y = -0.42;
     this.group.add(shadow);
+  }
+
+  getAverageSuspension(indices) {
+    let total = 0;
+    let count = 0;
+
+    indices.forEach((index) => {
+      if (!this.vehicle.wheelIsInContact(index)) {
+        return;
+      }
+
+      total += this.vehicle.wheelSuspensionLength(index) ?? this.suspensionRestLength;
+      count += 1;
+    });
+
+    return count > 0 ? total / count : this.suspensionRestLength;
   }
 
   setupVehicle() {
@@ -264,13 +332,16 @@ export default class Car {
       this.vehicle.setWheelEngineForce(index, this.engineForce);
     });
 
-    if (this.application.controls.consumeJump() && this.grounded && this.jumpCooldown <= 0) {
+    const jumpRequested = this.application.controls.consumeJump();
+
+    if (jumpRequested && this.grounded && this.jumpCooldown <= 0) {
       this.rigidBody.applyImpulse({ x: 0, y: 5.2, z: 0 }, true);
       this.jumpCooldown = 0.45;
     }
 
-    if (this.grounded && Math.abs(currentSpeed) > 2) {
-      this.rigidBody.applyImpulse({ x: 0, y: -Math.abs(currentSpeed) * 0.018, z: 0 }, true);
+    if (this.grounded && !(jumpRequested && this.jumpCooldown > 0.4)) {
+      const downforce = 0.08 + Math.abs(currentSpeed) * 0.018;
+      this.rigidBody.applyImpulse({ x: 0, y: -downforce, z: 0 }, true);
     }
 
     this.vehicle.updateVehicle(delta, undefined, undefined, (candidate) => {
@@ -306,6 +377,17 @@ export default class Car {
       holder.position.y = holder.userData.baseY - (suspensionLength - this.suspensionRestLength);
       holder.children[0].rotation.x = wheelRotation;
     });
+
+    const frontSuspension = this.getAverageSuspension(this.frontWheelIndices);
+    const rearSuspension = this.getAverageSuspension(this.rearWheelIndices);
+    const pitchTarget = THREE.MathUtils.clamp((rearSuspension - frontSuspension) * 4.2, -0.32, 0.32);
+    this.visualPitch = THREE.MathUtils.damp(
+      this.visualPitch,
+      this.grounded ? pitchTarget : this.visualPitch * 0.95,
+      this.grounded ? 9 : 4,
+      delta
+    );
+    this.visualRoot.rotation.x = this.visualPitch;
 
     const horizontalSpeed = new THREE.Vector2(linvel.x, linvel.z).length();
     this.stabilizeIdle(horizontalSpeed);

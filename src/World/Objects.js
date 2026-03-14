@@ -150,15 +150,10 @@ export default class Objects {
     const width = 20;
     const slopeDepth = 8;
     const deckDepth = 6;
-    const thickness = 0.36;
     const angle = Math.PI / 22;
     const roadTop = 0.12;
-    const halfThickness = thickness * 0.5;
-    const halfSlopeDepth = slopeDepth * 0.5;
     const rampHeight = slopeDepth * Math.sin(angle);
-    const deckTop = roadTop + rampHeight;
-    const deckCenterY = deckTop - halfThickness;
-    const slopeOffsetZ = deckDepth * 0.5 + halfSlopeDepth;
+    const totalHalfDepth = deckDepth * 0.5 + slopeDepth;
 
     this.createChallengeBanner({
       z: centerZ,
@@ -168,10 +163,10 @@ export default class Objects {
     });
 
     [
-      centerZ + slopeOffsetZ + 6,
-      centerZ + slopeOffsetZ + 10,
-      centerZ - slopeOffsetZ - 6,
-      centerZ - slopeOffsetZ - 10
+      centerZ + totalHalfDepth + 2,
+      centerZ + totalHalfDepth + 6,
+      centerZ - totalHalfDepth - 2,
+      centerZ - totalHalfDepth - 6
     ].forEach((stripeZ) => {
       for (let x = -10; x <= 10; x += 5) {
         const stripe = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.05, 0.9), stripeMaterial);
@@ -183,50 +178,28 @@ export default class Objects {
       }
     });
 
-    [centerZ + slopeOffsetZ, centerZ - slopeOffsetZ].forEach((z) => {
-      const rotationY = z > centerZ ? 0 : Math.PI;
-      const quaternion = new THREE.Quaternion().setFromEuler(
-        new THREE.Euler(0, rotationY, 0)
-      );
-      const slope = new THREE.Mesh(
-        this.createRampGeometry(width, rampHeight, slopeDepth),
-        rampMaterial
-      );
-      slope.position.set(0, roadTop, z);
-      slope.rotation.y = rotationY;
-      slope.castShadow = true;
-      slope.receiveShadow = true;
-      slope.frustumCulled = true;
-      this.group.add(slope);
+    const jump = new THREE.Mesh(
+      this.createTabletopGeometry(width, rampHeight, deckDepth, slopeDepth),
+      rampMaterial
+    );
+    jump.position.set(0, roadTop, centerZ);
+    jump.castShadow = true;
+    jump.receiveShadow = true;
+    jump.frustumCulled = true;
+    this.group.add(jump);
 
-      this.application.physics.createConvexHull({
-        position: new THREE.Vector3(0, roadTop, z),
-        points: this.createRampHullPoints(width, rampHeight, slopeDepth),
-        type: 'fixed',
-        rotation: quaternion,
-        friction: 2.2
-      });
-    });
-
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(width, thickness, deckDepth), rampMaterial);
-    deck.position.set(0, deckCenterY, centerZ);
-    deck.castShadow = true;
-    deck.receiveShadow = true;
-    deck.frustumCulled = true;
-    this.group.add(deck);
-
-    this.application.physics.createBox({
-      position: new THREE.Vector3(0, deckCenterY, centerZ),
-      size: new THREE.Vector3(width, thickness, deckDepth),
+    this.application.physics.createConvexHull({
+      position: new THREE.Vector3(0, roadTop, centerZ),
+      points: this.createTabletopHullPoints(width, rampHeight, deckDepth, slopeDepth),
       type: 'fixed',
       friction: 2.2
     });
 
     [
-      [-13, centerZ + 10],
-      [13, centerZ + 10],
-      [-13, centerZ - 10],
-      [13, centerZ - 10]
+      [-13, centerZ + totalHalfDepth],
+      [13, centerZ + totalHalfDepth],
+      [-13, centerZ - totalHalfDepth],
+      [13, centerZ - totalHalfDepth]
     ].forEach(([x, z]) => {
       const beacon = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.1, 8), beaconMaterial);
       beacon.position.set(x, 1.08, z);
@@ -237,26 +210,33 @@ export default class Objects {
     });
   }
 
-  createRampGeometry(width, height, depth) {
+  createTabletopGeometry(width, height, deckDepth, slopeDepth) {
     const halfWidth = width * 0.5;
-    const halfDepth = depth * 0.5;
+    const deckHalfDepth = deckDepth * 0.5;
+    const totalHalfDepth = deckHalfDepth + slopeDepth;
     const vertices = new Float32Array([
-      -halfWidth, 0, halfDepth,
-      halfWidth, 0, halfDepth,
-      -halfWidth, 0, -halfDepth,
-      halfWidth, 0, -halfDepth,
-      -halfWidth, height, -halfDepth,
-      halfWidth, height, -halfDepth
+      -halfWidth, 0, totalHalfDepth,
+      halfWidth, 0, totalHalfDepth,
+      -halfWidth, 0, -totalHalfDepth,
+      halfWidth, 0, -totalHalfDepth,
+      -halfWidth, height, deckHalfDepth,
+      halfWidth, height, deckHalfDepth,
+      -halfWidth, height, -deckHalfDepth,
+      halfWidth, height, -deckHalfDepth
     ]);
     const indices = [
       0, 2, 1,
       1, 2, 3,
       0, 1, 4,
       1, 5, 4,
-      2, 4, 3,
-      3, 4, 5,
-      0, 4, 2,
-      1, 3, 5
+      4, 5, 6,
+      5, 7, 6,
+      6, 7, 2,
+      7, 3, 2,
+      0, 4, 6,
+      0, 6, 2,
+      1, 3, 7,
+      1, 7, 5
     ];
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
@@ -265,17 +245,20 @@ export default class Objects {
     return geometry;
   }
 
-  createRampHullPoints(width, height, depth) {
+  createTabletopHullPoints(width, height, deckDepth, slopeDepth) {
     const halfWidth = width * 0.5;
-    const halfDepth = depth * 0.5;
+    const deckHalfDepth = deckDepth * 0.5;
+    const totalHalfDepth = deckHalfDepth + slopeDepth;
 
     return new Float32Array([
-      -halfWidth, 0, halfDepth,
-      halfWidth, 0, halfDepth,
-      -halfWidth, 0, -halfDepth,
-      halfWidth, 0, -halfDepth,
-      -halfWidth, height, -halfDepth,
-      halfWidth, height, -halfDepth
+      -halfWidth, 0, totalHalfDepth,
+      halfWidth, 0, totalHalfDepth,
+      -halfWidth, 0, -totalHalfDepth,
+      halfWidth, 0, -totalHalfDepth,
+      -halfWidth, height, deckHalfDepth,
+      halfWidth, height, deckHalfDepth,
+      -halfWidth, height, -deckHalfDepth,
+      halfWidth, height, -deckHalfDepth
     ]);
   }
 
