@@ -102,6 +102,20 @@ export default class Floor {
       this.materials.shoulder
     );
 
+    this.application.physics.createBox({
+      position: new THREE.Vector3(0, 0.03, 0),
+      size: new THREE.Vector3(this.world.shoulderWidth, 0.06, this.world.shoulderLength),
+      type: 'fixed',
+      friction: 1.55
+    });
+
+    this.application.physics.createBox({
+      position: new THREE.Vector3(0, 0.06, 0),
+      size: new THREE.Vector3(this.world.roadWidth, 0.12, this.world.roadLength),
+      type: 'fixed',
+      friction: 1.85
+    });
+
     const jumpRunways = [
       { size: [74, 0.08, 102], position: [0, 0.04, -300] },
       { size: [74, 0.08, 102], position: [0, 0.04, 300] }
@@ -109,6 +123,13 @@ export default class Floor {
 
     jumpRunways.forEach(({ size, position }) => {
       this.addMesh(size, position, this.materials.shoulder);
+
+      this.application.physics.createBox({
+        position: new THREE.Vector3(...position),
+        size: new THREE.Vector3(...size),
+        type: 'fixed',
+        friction: 1.7
+      });
     });
 
     const shoulders = [

@@ -17,30 +17,31 @@ export default class Car {
     this.engineForce = 0;
     this.brakeForce = 0;
     this.steerValue = 0;
-    this.visualPitch = 0;
-    this.suspensionRestLength = 0.18;
+    this.suspensionRestLength = 0.22;
     this.wheelRadius = 0.34;
 
     const { rigidBody, collider } = this.application.physics.createBox({
-      position: new THREE.Vector3(0, 0.68, 0),
-      size: new THREE.Vector3(1.7, 0.7, 3.2),
+      position: new THREE.Vector3(0, 0.76, 0),
+      size: new THREE.Vector3(1.54, 0.54, 2.64),
       type: 'dynamic',
       canSleep: false,
-      friction: 1.8,
+      friction: 0.42,
       restitution: 0,
-      density: 1.1
+      density: 1.35,
+      contactSkin: 0.018,
+      colliderOffset: new THREE.Vector3(0, -0.08, 0)
     });
 
     this.rigidBody = rigidBody;
     this.collider = collider;
-    this.rigidBody.setEnabledRotations(false, true, false, true);
-    this.rigidBody.setLinearDamping(0.16);
-    this.rigidBody.setAngularDamping(1.2);
-    this.rigidBody.setAdditionalSolverIterations(6);
-    this.rigidBody.setGravityScale(1.28, true);
+    this.rigidBody.setEnabledRotations(true, true, false, true);
+    this.rigidBody.setLinearDamping(0.2);
+    this.rigidBody.setAngularDamping(1.6);
+    this.rigidBody.setAdditionalSolverIterations(8);
+    this.rigidBody.setGravityScale(1.45, true);
 
-    if (typeof this.rigidBody.setCcdEnabled === 'function') {
-      this.rigidBody.setCcdEnabled(true);
+    if (typeof this.rigidBody.enableCcd === 'function') {
+      this.rigidBody.enableCcd(true);
     }
 
     this.vehicle = this.application.physics.world.createVehicleController(this.rigidBody);
@@ -221,8 +222,10 @@ export default class Car {
       new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.16 })
     );
     shadow.rotation.x = -Math.PI * 0.5;
-    shadow.position.y = -0.42;
-    this.group.add(shadow);
+    shadow.position.y = 0.03;
+    shadow.renderOrder = -1;
+    this.shadow = shadow;
+    this.application.scene.add(shadow);
   }
 
   getAverageSuspension(indices) {
@@ -245,10 +248,10 @@ export default class Car {
     const direction = { x: 0, y: -1, z: 0 };
     const axle = { x: -1, y: 0, z: 0 };
     const wheelConnections = [
-      { x: -0.92, y: -0.08, z: -1.02 },
-      { x: 0.92, y: -0.08, z: -1.02 },
-      { x: -0.92, y: -0.08, z: 1.02 },
-      { x: 0.92, y: -0.08, z: 1.02 }
+      { x: -0.92, y: -0.16, z: -1.02 },
+      { x: 0.92, y: -0.16, z: -1.02 },
+      { x: -0.92, y: -0.16, z: 1.02 },
+      { x: 0.92, y: -0.16, z: 1.02 }
     ];
 
     wheelConnections.forEach((connection) => {
@@ -265,18 +268,18 @@ export default class Car {
     this.rearWheelIndices = [2, 3];
 
     for (let i = 0; i < this.vehicle.numWheels(); i += 1) {
-      this.vehicle.setWheelSuspensionStiffness(i, 23);
-      this.vehicle.setWheelSuspensionCompression(i, 3.1);
-      this.vehicle.setWheelSuspensionRelaxation(i, 4.1);
-      this.vehicle.setWheelMaxSuspensionTravel(i, 0.28);
-      this.vehicle.setWheelMaxSuspensionForce(i, 180);
-      this.vehicle.setWheelFrictionSlip(i, 5.1);
-      this.vehicle.setWheelSideFrictionStiffness(i, 8);
+      this.vehicle.setWheelSuspensionStiffness(i, 28);
+      this.vehicle.setWheelSuspensionCompression(i, 4.4);
+      this.vehicle.setWheelSuspensionRelaxation(i, 5.2);
+      this.vehicle.setWheelMaxSuspensionTravel(i, 0.34);
+      this.vehicle.setWheelMaxSuspensionForce(i, 320);
+      this.vehicle.setWheelFrictionSlip(i, 5.8);
+      this.vehicle.setWheelSideFrictionStiffness(i, 8.8);
     }
 
     this.frontWheelIndices.forEach((index) => {
-      this.vehicle.setWheelFrictionSlip(index, 4.7);
-      this.vehicle.setWheelSideFrictionStiffness(index, 8.4);
+      this.vehicle.setWheelFrictionSlip(index, 5.4);
+      this.vehicle.setWheelSideFrictionStiffness(index, 8.2);
     });
 
     this.rigidBody.wakeUp();
@@ -288,9 +291,9 @@ export default class Car {
     const speedRatio = THREE.MathUtils.clamp(Math.abs(currentSpeed) / 24, 0, 1);
     const targetEngineForce =
       throttle > 0
-        ? -(boost ? 138 : 96) * throttle
+        ? -(boost ? 156 : 108) * throttle
         : throttle < 0
-          ? (Math.abs(currentSpeed) < 2 ? 88 : 76) * -throttle
+          ? (Math.abs(currentSpeed) < 2 ? 98 : 84) * -throttle
           : 0;
     const changingDirection =
       throttle !== 0 &&
@@ -298,12 +301,12 @@ export default class Car {
       Math.abs(currentSpeed) > 2.8;
     const targetBrakeForce =
       brake || changingDirection
-        ? 2.6
+        ? 3.2
         : throttle === 0
-          ? 1.15
+          ? 1.35
           : 0;
-    const steeringLimit = THREE.MathUtils.lerp(0.5, 0.16, speedRatio);
-    const steeringResponse = this.grounded ? 7.5 : 2.4;
+    const steeringLimit = THREE.MathUtils.lerp(0.46, 0.14, speedRatio);
+    const steeringResponse = this.grounded ? 8.4 : 2.8;
 
     this.grounded = this.getWheelContactCount() > 0;
     this.engineForce = this.moveTowards(this.engineForce, targetEngineForce, 180 * delta);
@@ -339,9 +342,10 @@ export default class Car {
       this.jumpCooldown = 0.45;
     }
 
-    if (this.grounded && !(jumpRequested && this.jumpCooldown > 0.4)) {
-      const downforce = 0.08 + Math.abs(currentSpeed) * 0.018;
-      this.rigidBody.applyImpulse({ x: 0, y: -downforce, z: 0 }, true);
+    if (!(jumpRequested && this.jumpCooldown > 0.4)) {
+      const speedAbs = Math.abs(currentSpeed);
+      const downforce = this.grounded ? 34 + speedAbs * speedAbs * 0.95 : 16 + speedAbs * 0.6;
+      this.rigidBody.addForce({ x: 0, y: -downforce, z: 0 }, true);
     }
 
     this.vehicle.updateVehicle(delta, undefined, undefined, (candidate) => {
@@ -377,17 +381,7 @@ export default class Car {
       holder.position.y = holder.userData.baseY - (suspensionLength - this.suspensionRestLength);
       holder.children[0].rotation.x = wheelRotation;
     });
-
-    const frontSuspension = this.getAverageSuspension(this.frontWheelIndices);
-    const rearSuspension = this.getAverageSuspension(this.rearWheelIndices);
-    const pitchTarget = THREE.MathUtils.clamp((rearSuspension - frontSuspension) * 4.2, -0.32, 0.32);
-    this.visualPitch = THREE.MathUtils.damp(
-      this.visualPitch,
-      this.grounded ? pitchTarget : this.visualPitch * 0.95,
-      this.grounded ? 9 : 4,
-      delta
-    );
-    this.visualRoot.rotation.x = this.visualPitch;
+    this.visualRoot.rotation.x = 0;
 
     const horizontalSpeed = new THREE.Vector2(linvel.x, linvel.z).length();
     this.stabilizeIdle(horizontalSpeed);
@@ -399,6 +393,14 @@ export default class Car {
     }
 
     this.lastHorizontalSpeed = horizontalSpeed;
+
+    if (this.shadow) {
+      const hoverHeight = THREE.MathUtils.clamp(this.position.y - 0.78, 0, 2.5);
+      const shadowScale = THREE.MathUtils.clamp(1.2 - hoverHeight * 0.16, 0.7, 1.2);
+      this.shadow.position.set(this.position.x, 0.03, this.position.z);
+      this.shadow.scale.setScalar(shadowScale);
+      this.shadow.material.opacity = THREE.MathUtils.clamp(0.18 - hoverHeight * 0.035, 0.06, 0.18);
+    }
   }
 
   getWheelContactCount() {

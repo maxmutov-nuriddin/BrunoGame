@@ -135,7 +135,7 @@ export default class Objects {
 
   createJumpSet({ centerZ, title, subtitle, accent }) {
     const atlasTile = this.application.resources.createAtlasTile(2, 2);
-    atlasTile.repeat.set(2.5, 2.5);
+    atlasTile.repeat.set(1.75, 1.75);
     atlasTile.needsUpdate = true;
 
     const matcap = this.application.resources.items.matcap;
@@ -147,10 +147,10 @@ export default class Objects {
     const stripeMaterial = new THREE.MeshMatcapMaterial({ matcap, color: accent });
     const beaconMaterial = new THREE.MeshMatcapMaterial({ matcap, color: '#f7f8ff' });
 
-    const width = 20;
-    const slopeDepth = 8;
-    const deckDepth = 6;
-    const angle = Math.PI / 22;
+    const width = 22;
+    const slopeDepth = 12;
+    const deckDepth = 8;
+    const angle = Math.PI / 28;
     const roadTop = 0.12;
     const rampHeight = slopeDepth * Math.sin(angle);
     const totalHalfDepth = deckDepth * 0.5 + slopeDepth;
@@ -192,7 +192,8 @@ export default class Objects {
       position: new THREE.Vector3(0, roadTop, centerZ),
       points: this.createTabletopHullPoints(width, rampHeight, deckDepth, slopeDepth),
       type: 'fixed',
-      friction: 2.2
+      friction: 2.35,
+      contactSkin: 0.02
     });
 
     [

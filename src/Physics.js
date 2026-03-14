@@ -20,10 +20,12 @@ export default class Physics {
     size,
     type = 'fixed',
     rotation = null,
+    colliderOffset = null,
     canSleep = true,
     restitution = 0.04,
     friction = 1.3,
-    density = 1
+    density = 1,
+    contactSkin = 0
   }) {
     const bodyDesc =
       type === 'dynamic' ? RAPIER.RigidBodyDesc.dynamic() : RAPIER.RigidBodyDesc.fixed();
@@ -41,6 +43,14 @@ export default class Physics {
     colliderDesc.setFriction(friction);
     colliderDesc.setDensity(density);
 
+    if (colliderOffset) {
+      colliderDesc.setTranslation(colliderOffset.x, colliderOffset.y, colliderOffset.z);
+    }
+
+    if (contactSkin > 0) {
+      colliderDesc.setContactSkin(contactSkin);
+    }
+
     const collider = this.world.createCollider(colliderDesc, rigidBody);
     return { rigidBody, collider };
   }
@@ -50,9 +60,11 @@ export default class Physics {
     radius,
     height,
     type = 'fixed',
+    colliderOffset = null,
     canSleep = true,
     restitution = 0.04,
-    friction = 1.2
+    friction = 1.2,
+    contactSkin = 0
   }) {
     const bodyDesc =
       type === 'dynamic' ? RAPIER.RigidBodyDesc.dynamic() : RAPIER.RigidBodyDesc.fixed();
@@ -65,6 +77,14 @@ export default class Physics {
     colliderDesc.setRestitution(restitution);
     colliderDesc.setFriction(friction);
 
+    if (colliderOffset) {
+      colliderDesc.setTranslation(colliderOffset.x, colliderOffset.y, colliderOffset.z);
+    }
+
+    if (contactSkin > 0) {
+      colliderDesc.setContactSkin(contactSkin);
+    }
+
     const collider = this.world.createCollider(colliderDesc, rigidBody);
     return { rigidBody, collider };
   }
@@ -74,10 +94,12 @@ export default class Physics {
     points,
     type = 'fixed',
     rotation = null,
+    colliderOffset = null,
     canSleep = true,
     restitution = 0.04,
     friction = 1.3,
-    density = 1
+    density = 1,
+    contactSkin = 0
   }) {
     const bodyDesc =
       type === 'dynamic' ? RAPIER.RigidBodyDesc.dynamic() : RAPIER.RigidBodyDesc.fixed();
@@ -101,6 +123,14 @@ export default class Physics {
     colliderDesc.setRestitution(restitution);
     colliderDesc.setFriction(friction);
     colliderDesc.setDensity(density);
+
+    if (colliderOffset) {
+      colliderDesc.setTranslation(colliderOffset.x, colliderOffset.y, colliderOffset.z);
+    }
+
+    if (contactSkin > 0) {
+      colliderDesc.setContactSkin(contactSkin);
+    }
 
     const collider = this.world.createCollider(colliderDesc, rigidBody);
     return { rigidBody, collider };
