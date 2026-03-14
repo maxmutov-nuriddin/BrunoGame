@@ -21,7 +21,7 @@ export default class Application {
     this.clock = new THREE.Clock();
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#89d2ff');
-    this.scene.fog = new THREE.Fog('#89d2ff', 58, 260);
+    this.scene.fog = new THREE.Fog('#89d2ff', 180, 1200);
 
     this.tick = this.tick.bind(this);
     this.handleResize = this.handleResize.bind(this);

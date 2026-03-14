@@ -6,12 +6,12 @@ export default class Floor {
     this.group = new THREE.Group();
     this.group.name = 'Floor';
     this.world = {
-      width: 560,
-      depth: 1500,
+      width: 640,
+      depth: 12000,
       roadWidth: 40,
       shoulderWidth: 56,
-      roadLength: 1280,
-      shoulderLength: 1308
+      roadLength: 9600,
+      shoulderLength: 9640
     };
 
     this.materials = {
