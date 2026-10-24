@@ -1,5 +1,5 @@
 // Original, locally generated vehicle pack. Metres; +Y up, -Z forward.
-// Contract (see src/World/Car.js): origin at chassis centre, Wheel_0..3 at (±.97, -.28, ±1.30),
+// Contract (see shared/physics/VehiclePhysics.ts): origin at chassis centre, Wheel_0..3 at (±.97, -.28, ±1.30),
 // wheel radius .35, material "BrakeLights", meshes named "Headlight".
 import * as T from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';

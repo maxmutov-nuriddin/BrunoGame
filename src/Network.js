@@ -1,53 +1,45 @@
-// Must match CACHE_NAME in public/sw.js.
-const CACHE_NAME = 'bruno-game-v2';
+let waitingWorker = null;
+const listeners = new Set();
 
-// The worker is not active yet during the very first load, so seed the cache with what already loaded.
-async function cacheLoadedResources() {
-  const cache = await caches.open(CACHE_NAME);
-  const urls = performance
-    .getEntriesByType('resource')
-    .map((entry) => entry.name)
-    .filter((url) => new URL(url).origin === window.location.origin && !url.includes('/@vite/'));
-
-  await Promise.all(
-    urls.map(async (url) => {
-      if (await cache.match(url, { ignoreVary: true })) return;
-      const response = await fetch(url);
-      if (response.ok) await cache.put(url, response);
-    })
-  );
+function notify(worker) {
+  waitingWorker = worker;
+  for (const listener of listeners) listener();
 }
 
-export function seedOfflineCache() {
-  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) {
-    return;
-  }
-
-  navigator.serviceWorker.ready
-    .then(cacheLoadedResources)
-    .catch((error) => console.error('Offline cache seeding failed', error));
-}
-
+/** Register the service worker (production builds only). Updates wait until the player accepts them. */
 export function registerOfflineSupport() {
-  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) {
-    return;
-  }
-
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}sw.js`)
+      .then((registration) => {
+        if (registration.waiting && navigator.serviceWorker.controller) notify(registration.waiting);
+        registration.addEventListener('updatefound', () => {
+          const worker = registration.installing;
+          worker?.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) notify(worker);
+          });
+        });
+      })
       .catch((error) => console.error('Service worker registration failed', error));
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
   });
 }
 
-export function watchConnection(element) {
-  const update = () => {
-    const online = navigator.onLine;
-    element.textContent = online ? 'Online' : 'Offline';
-    element.dataset.state = online ? 'online' : 'offline';
-  };
-
-  update();
-  window.addEventListener('online', update);
-  window.addEventListener('offline', update);
+export function onUpdateAvailable(listener) {
+  listeners.add(listener);
+  if (waitingWorker) listener();
 }
+
+/** Activate the waiting version (called from a menu, never mid-race). */
+export function applyUpdate() {
+  waitingWorker?.postMessage('SKIP_WAITING');
+}
+
+/** Kept for API compatibility: the build-time precache list now covers every asset. */
+export function seedOfflineCache() {}

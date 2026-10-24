@@ -20,4 +20,4 @@ coverage/
 *.eslintcache
 *.prettiercache
 *.tscache
-*.vscode/
+*.vscode/.shots/

@@ -1,25 +1,37 @@
 {
-  "name": "bruno-game",
+  "name": "nitro-clash",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "tsx watch server/main.ts",
+    "dev:all": "node scripts/dev-all.mjs",
     "build": "vite build",
+    "start:server": "tsx server/main.ts",
     "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run typecheck && tsx --test --test-concurrency=1 scripts/tests/vehicle.test.ts scripts/tests/race.test.ts scripts/tests/multiplayer.test.ts",
+    "test:vehicle": "tsx --test scripts/tests/vehicle.test.ts",
+    "test:race": "tsx --test scripts/tests/race.test.ts",
+    "test:multiplayer": "tsx --test --test-concurrency=1 scripts/tests/multiplayer.test.ts",
     "model:car": "node scripts/build-car.mjs",
-    "test:car": "node scripts/check-car.mjs",
-    "test:world": "node scripts/check-world.mjs",
     "model:pack": "node scripts/build-vehicle-pack.mjs",
-    "model:world": "node scripts/build-world-pack.mjs"
+    "model:world": "node scripts/build-world-pack.mjs",
+    "bench": "tsx scripts/bench.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.17.3",
-    "gsap": "^3.12.5",
-    "howler": "^2.2.4",
-    "three": "^0.179.1"
+    "qrcode-generator": "^2.0.4",
+    "three": "^0.179.1",
+    "tsx": "^4.23.15",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/three": "^0.179.0",
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.9.3",
     "vite": "^6.2.0"
   }
 }
