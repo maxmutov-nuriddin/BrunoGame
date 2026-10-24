@@ -9,6 +9,40 @@ import Resources from './Resources.js';
 import Car from './World/Car.js';
 import Floor from './World/Floor.js';
 import Objects from './World/Objects.js';
+import WorldPack from './World/WorldPack.js';
+import { normalizeSeedCode, randomSeedCode } from './World/pack/seed.js';
+import { seedOfflineCache, watchConnection } from './Network.js';
+import { VEHICLES, findVehicle } from './vehicles.js';
+
+const VEHICLE_STORAGE_KEY = 'bruno-game:vehicle';
+const SEED_QUERY_PARAM = 'seed';
+
+function initialSeedCode() {
+  const fromUrl = normalizeSeedCode(new URLSearchParams(window.location.search).get(SEED_QUERY_PARAM));
+  return fromUrl.length >= 4 ? fromUrl : randomSeedCode();
+}
+
+function writeSeedToUrl(code) {
+  const url = new URL(window.location.href);
+  url.searchParams.set(SEED_QUERY_PARAM, code);
+  window.history.replaceState(null, '', url);
+}
+
+function loadSavedVehicle() {
+  try {
+    return findVehicle(window.localStorage.getItem(VEHICLE_STORAGE_KEY));
+  } catch {
+    return findVehicle(null);
+  }
+}
+
+function saveVehicle(id) {
+  try {
+    window.localStorage.setItem(VEHICLE_STORAGE_KEY, id);
+  } catch {
+    // Storage can be blocked; the choice just won't persist.
+  }
+}
 
 export default class Application {
   constructor(root) {
@@ -18,6 +52,8 @@ export default class Application {
     this.activeSection = null;
     this.openSectionId = null;
     this.currentPromptId = null;
+    this.vehicle = loadSavedVehicle();
+    this.seedCode = initialSeedCode();
     this.clock = new THREE.Clock();
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#89d2ff');
@@ -46,6 +82,23 @@ export default class Application {
               Cruise through a bright low-poly city, slam into ramps, and inspect sections by parking next to them.
             </p>
 
+            <div class="garage" role="radiogroup" aria-label="Choose a vehicle">
+              ${VEHICLES.map(
+                (vehicle) => `
+                <button class="garage__item" type="button" role="radio" data-vehicle="${vehicle.id}">
+                  <strong>${vehicle.name}</strong>
+                  <span>${vehicle.role}</span>
+                  <em>${vehicle.zone}</em>
+                </button>`
+              ).join('')}
+            </div>
+
+            <div class="seed-row">
+              <label for="world-seed">World code</label>
+              <input id="world-seed" class="seed-row__input" type="text" maxlength="9" autocomplete="off" spellcheck="false" />
+              <button class="seed-row__random" type="button">Random</button>
+            </div>
+
             <div class="loading-progress">
               <div class="loading-progress__bar"></div>
             </div>
@@ -65,12 +118,14 @@ export default class Application {
               <span class="hud-chip"><strong>Speed</strong> <span data-speed>0 km/h</span></span>
               <span class="hud-chip"><strong>Zone</strong> <span data-zone>Free roam</span></span>
               <span class="hud-chip"><strong>Jump</strong> <span data-jump>Ready</span></span>
+              <span class="hud-chip"><strong>World</strong> <span data-seed>-</span></span>
+              <span class="hud-chip"><strong>Net</strong> <span data-network>Online</span></span>
             </div>
           </div>
 
           <div class="hud-help">
             <strong>Controls</strong>
-            <p>WASD or touch drive, Shift boost, Space jump, Ctrl brake, Enter interact.</p>
+            <p>WASD or touch drive, Shift boost, Space jump, Ctrl brake, R recover, Enter interact.</p>
           </div>
         </div>
 
@@ -126,11 +181,53 @@ export default class Application {
     this.hudSpeed = this.root.querySelector('[data-speed]');
     this.hudZone = this.root.querySelector('[data-zone]');
     this.hudJump = this.root.querySelector('[data-jump]');
+    this.hudNetwork = this.root.querySelector('[data-network]');
+    this.seedInput = this.root.querySelector('.seed-row__input');
+    this.seedRandomButton = this.root.querySelector('.seed-row__random');
+    this.hudSeed = this.root.querySelector('[data-seed]');
+    this.garageButtons = [...this.root.querySelectorAll('[data-vehicle]')];
     this.touchHoldButtons = [...this.root.querySelectorAll('[data-touch-hold]')];
     this.touchTapButtons = [...this.root.querySelectorAll('[data-touch-tap]')];
 
+    watchConnection(this.hudNetwork);
     this.panelClose.addEventListener('click', () => this.closeSectionPanel());
     this.startButton.addEventListener('click', () => this.start());
+    this.garageButtons.forEach((button) =>
+      button.addEventListener('click', () => this.selectVehicle(button.dataset.vehicle))
+    );
+    this.markSelectedVehicle();
+    this.seedInput.value = this.seedCode;
+    this.hudSeed.textContent = this.seedCode;
+    this.seedInput.addEventListener('change', () => this.setSeed(this.seedInput.value));
+    this.seedInput.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') this.setSeed(this.seedInput.value);
+    });
+    this.seedRandomButton.addEventListener('click', () => this.setSeed(randomSeedCode()));
+  }
+
+  markSelectedVehicle() {
+    this.garageButtons.forEach((button) => {
+      const selected = button.dataset.vehicle === this.vehicle.id;
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-checked', String(selected));
+    });
+  }
+
+  selectVehicle(id) {
+    const vehicle = findVehicle(id);
+    if (this.started || vehicle.id === this.vehicle.id) {
+      return;
+    }
+
+    this.vehicle = vehicle;
+    saveVehicle(vehicle.id);
+    this.markSelectedVehicle();
+
+    if (this.ready) {
+      this.car.destroy();
+      this.car = new Car(this);
+    }
   }
 
   async init() {
@@ -153,14 +250,17 @@ export default class Application {
     this.bindTouchControls();
     this.physics = await Physics.create();
 
+    this.addLights();
     this.floor = new Floor(this);
     this.objects = new Objects(this);
+    this.world = new WorldPack(this, this.seedCode);
     this.car = new Car(this);
 
-    this.addLights();
+    writeSeedToUrl(this.seedCode);
     this.setupAudio();
 
     this.ready = true;
+    seedOfflineCache();
     this.loadingStatus.textContent = 'Everything is loaded. Fire it up.';
     this.startButton.classList.add('is-ready');
     window.addEventListener('resize', this.handleResize);
@@ -175,9 +275,11 @@ export default class Application {
 
   addLights() {
     const hemisphere = new THREE.HemisphereLight('#fff3ca', '#4980a8', 1.6);
+    this.hemisphere = hemisphere;
     this.scene.add(hemisphere);
 
     const sun = new THREE.DirectionalLight('#fff8d2', 2.7);
+    this.sun = sun;
     sun.position.set(18, 24, 12);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -189,6 +291,31 @@ export default class Application {
     sun.shadow.camera.bottom = -32;
     sun.shadow.normalBias = 0.02;
     this.scene.add(sun);
+  }
+
+  applyPalette({ sky, hemiSky, hemiGround, sun }) {
+    this.scene.background = new THREE.Color(sky);
+    this.scene.fog.color.set(sky);
+    this.hemisphere.color.set(hemiSky);
+    this.hemisphere.groundColor.set(hemiGround);
+    this.sun.color.set(sun);
+  }
+
+  setSeed(input) {
+    const requested = normalizeSeedCode(input);
+    const code = requested.length >= 4 ? requested : randomSeedCode();
+    this.seedInput.value = code;
+
+    if (this.started || code === this.seedCode || !this.ready) {
+      this.seedInput.value = this.seedCode;
+      return;
+    }
+
+    this.seedCode = code;
+    this.world.dispose();
+    this.world = new WorldPack(this, code);
+    this.hudSeed.textContent = code;
+    writeSeedToUrl(code);
   }
 
   setupAudio() {
@@ -291,15 +418,15 @@ export default class Application {
     const delta = Math.min(this.clock.getDelta(), 0.05);
 
     this.controls.update();
-    this.car.beforePhysics(delta);
-    this.physics.update(delta);
+    this.physics.update(delta, (step) => this.car.beforePhysics(step));
     this.car.afterPhysics(delta);
     this.objects.update(delta, this.car.position);
+    this.world.update();
     this.camera.update(delta);
     this.updateInteractionState();
     this.updateHud();
     this.updateAudio();
-    this.renderer.render();
+    this.renderer.render(delta);
 
     requestAnimationFrame(this.tick);
   }

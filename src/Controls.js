@@ -36,6 +36,8 @@ export default class Controls {
       event.preventDefault();
     }
 
+    if (code === 'KeyR' && !event.repeat) this.application.car?.recover();
+
     if (code === 'Enter' && !event.repeat) {
       this.interactQueued = true;
     }

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { VEHICLES } from './vehicles.js';
+import { WORLD_PACK_DIR, WORLD_PACK_FILES, worldResourceName } from './worldPack.js';
 
 export default class Resources extends EventTarget {
   constructor() {
@@ -13,6 +15,18 @@ export default class Resources extends EventTarget {
 
   async load() {
     const sources = [
+      ...VEHICLES.map((vehicle) => ({
+        name: vehicle.resource,
+        type: 'gltf',
+        path: `/models/${vehicle.file}`,
+        label: `Loading ${vehicle.name}...`
+      })),
+      ...Object.entries(WORLD_PACK_FILES).map(([key, file]) => ({
+        name: worldResourceName(key),
+        type: 'gltf',
+        path: `${WORLD_PACK_DIR}/${file}`,
+        label: 'Loading world pack...'
+      })),
       { name: 'matcap', type: 'texture', path: this.createMatcapDataUrl(), label: 'Loading matcap materials...' },
       { name: 'atlas', type: 'texture', path: this.createAtlasDataUrl(), label: 'Building texture atlas...' },
       { name: 'prop', type: 'gltf', path: '/models/lowpoly-prop.gltf', label: 'Importing low-poly props...' }

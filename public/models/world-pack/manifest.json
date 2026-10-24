@@ -1,0 +1,215 @@
+[
+  {
+    "file": "grass-tile.glb",
+    "bytes": 378544,
+    "triangles": 14252,
+    "dimensions": [
+      160,
+      1.0120000129267572,
+      160
+    ],
+    "tileSize": [
+      160,
+      160
+    ],
+    "periodicSurface": true,
+    "units": "metres"
+  },
+  {
+    "file": "straight-road.glb",
+    "bytes": 25224,
+    "triangles": 8690,
+    "dimensions": [
+      56.00000002384186,
+      1.2199999994039534,
+      160
+    ],
+    "tileLength": 160,
+    "roadWidth": 40,
+    "shoulderWidth": 8,
+    "units": "metres"
+  },
+  {
+    "file": "info-plaza.glb",
+    "bytes": 102044,
+    "triangles": 3184,
+    "dimensions": [
+      44,
+      6.5,
+      44
+    ],
+    "clearDrivingDiameter": 20,
+    "units": "metres"
+  },
+  {
+    "file": "gallery-plaza.glb",
+    "bytes": 53480,
+    "triangles": 1768,
+    "dimensions": [
+      48.02500000037253,
+      7.3,
+      48.02500000037253
+    ],
+    "clearDrivingSquare": 24,
+    "units": "metres"
+  },
+  {
+    "file": "blocks-plaza.glb",
+    "bytes": 32176,
+    "triangles": 786,
+    "dimensions": [
+      46,
+      9.5,
+      53.11622619628906
+    ],
+    "clearDrivingDiameter": 22,
+    "units": "metres"
+  },
+  {
+    "file": "contact-plaza.glb",
+    "bytes": 259264,
+    "triangles": 5663,
+    "dimensions": [
+      44,
+      7.524545550058372,
+      44
+    ],
+    "clearDrivingDiameter": 22,
+    "units": "metres"
+  },
+  {
+    "file": "driving-jumps.glb",
+    "bytes": 59908,
+    "triangles": 1192,
+    "dimensions": [
+      36,
+      4.5120000000000005,
+      58
+    ],
+    "units": "metres"
+  },
+  {
+    "file": "challenge-kit.glb",
+    "bytes": 28044,
+    "triangles": 576,
+    "dimensions": [
+      40.00000002384186,
+      9.000000000745057,
+      10.650000005960464
+    ],
+    "units": "metres"
+  },
+  {
+    "file": "scenery-kit.glb",
+    "bytes": 42784,
+    "triangles": 1928,
+    "dimensions": [
+      37.900000000000006,
+      10.000000023841858,
+      11.5
+    ],
+    "units": "metres"
+  },
+  {
+    "file": "landmark-kit.glb",
+    "bytes": 139364,
+    "triangles": 3112,
+    "dimensions": [
+      65.39999961853027,
+      20.250000047683717,
+      29.40000009536743
+    ],
+    "units": "metres"
+  },
+  {
+    "file": "world-border.glb",
+    "bytes": 160756,
+    "triangles": 6176,
+    "dimensions": [
+      728,
+      65.70595207653372,
+      728
+    ],
+    "innerRadius": 320,
+    "arcCount": 8,
+    "units": "metres"
+  },
+  {
+    "file": "WoodCrate.glb",
+    "bytes": 6464,
+    "triangles": 108,
+    "dimensions": [
+      1.2000000476837158,
+      1.2000000476837158,
+      1.2000000476837158
+    ],
+    "origin": "geometric centre",
+    "knockable": true,
+    "units": "metres"
+  },
+  {
+    "file": "Barrel.glb",
+    "bytes": 17024,
+    "triangles": 320,
+    "dimensions": [
+      0.7799999713897705,
+      1.100000023841858,
+      0.7799999713897705
+    ],
+    "origin": "geometric centre",
+    "knockable": true,
+    "units": "metres"
+  },
+  {
+    "file": "BowlingPin.glb",
+    "bytes": 14132,
+    "triangles": 448,
+    "dimensions": [
+      0.4000000059604645,
+      1,
+      0.4000000059604645
+    ],
+    "origin": "geometric centre",
+    "knockable": true,
+    "units": "metres"
+  },
+  {
+    "file": "ToyBrick.glb",
+    "bytes": 6048,
+    "triangles": 252,
+    "dimensions": [
+      1,
+      0.5000000037252903,
+      0.5
+    ],
+    "origin": "geometric centre",
+    "knockable": true,
+    "units": "metres"
+  },
+  {
+    "file": "Tire.glb",
+    "bytes": 9444,
+    "triangles": 320,
+    "dimensions": [
+      0.8999999761581421,
+      0.2500000000000002,
+      0.8999999761581421
+    ],
+    "origin": "geometric centre",
+    "knockable": true,
+    "units": "metres"
+  },
+  {
+    "file": "TrafficCone.glb",
+    "bytes": 14780,
+    "triangles": 192,
+    "dimensions": [
+      0.5444444351726108,
+      0.6999999965230623,
+      0.5444444351726108
+    ],
+    "origin": "geometric centre",
+    "knockable": true,
+    "units": "metres"
+  }
+]

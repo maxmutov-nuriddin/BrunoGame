@@ -1,0 +1,122 @@
+[
+  {
+    "file": "sport-gt.glb",
+    "name": "SportGT",
+    "bytes": 323876,
+    "meshes": 91,
+    "dimensions": {
+      "width": 2.245,
+      "height": 1.516,
+      "length": 4.425
+    },
+    "wheels": {
+      "radius": 0.37,
+      "width": 0.26,
+      "track": 1.9,
+      "wheelbase": 2.79
+    },
+    "units": "metres",
+    "forward": "-Z",
+    "up": "+Y"
+  },
+  {
+    "file": "rugged-pickup.glb",
+    "name": "RuggedPickup",
+    "bytes": 758484,
+    "meshes": 309,
+    "dimensions": {
+      "width": 2.415,
+      "height": 2.249,
+      "length": 4.79
+    },
+    "wheels": {
+      "radius": 0.46,
+      "width": 0.34,
+      "track": 1.99,
+      "wheelbase": 3.0300000000000002
+    },
+    "units": "metres",
+    "forward": "-Z",
+    "up": "+Y"
+  },
+  {
+    "file": "city-hatchback.glb",
+    "name": "CityHatchback",
+    "bytes": 380988,
+    "meshes": 91,
+    "dimensions": {
+      "width": 1.765,
+      "height": 1.8,
+      "length": 3.455
+    },
+    "wheels": {
+      "radius": 0.29,
+      "width": 0.24,
+      "track": 1.44,
+      "wheelbase": 2.1100000000000003
+    },
+    "units": "metres",
+    "forward": "-Z",
+    "up": "+Y"
+  },
+  {
+    "file": "neon-supercar.glb",
+    "name": "NeonSupercar",
+    "bytes": 486244,
+    "meshes": 101,
+    "dimensions": {
+      "width": 2.285,
+      "height": 1.33,
+      "length": 4.495
+    },
+    "wheels": {
+      "radius": 0.33,
+      "width": 0.22,
+      "track": 1.98,
+      "wheelbase": 2.79
+    },
+    "units": "metres",
+    "forward": "-Z",
+    "up": "+Y"
+  },
+  {
+    "file": "delivery-van.glb",
+    "name": "ParcelDeliveryVan",
+    "bytes": 589420,
+    "meshes": 120,
+    "dimensions": {
+      "width": 2.16,
+      "height": 2.916,
+      "length": 4.05
+    },
+    "wheels": {
+      "radius": 0.34,
+      "width": 0.25,
+      "track": 1.79,
+      "wheelbase": 2.45
+    },
+    "units": "metres",
+    "forward": "-Z",
+    "up": "+Y"
+  },
+  {
+    "file": "rally-buggy.glb",
+    "name": "DesertRallyBuggy",
+    "bytes": 389276,
+    "meshes": 303,
+    "dimensions": {
+      "width": 2.585,
+      "height": 2.364,
+      "length": 4.093
+    },
+    "wheels": {
+      "radius": 0.51,
+      "width": 0.4,
+      "track": 2.1,
+      "wheelbase": 2.49
+    },
+    "units": "metres",
+    "forward": "-Z",
+    "up": "+Y"
+  }
+]

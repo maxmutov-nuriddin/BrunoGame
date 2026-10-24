@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d-compat/rapier.es.js';
 
 export default class Physics {
   static async create() {
@@ -8,7 +8,7 @@ export default class Physics {
 
   constructor() {
     this.RAPIER = RAPIER;
-    this.world = new RAPIER.World({ x: 0, y: -14, z: 0 });
+    this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     this.fixedTimeStep = 1 / 60;
     this.accumulator = 0;
 
@@ -64,6 +64,7 @@ export default class Physics {
     canSleep = true,
     restitution = 0.04,
     friction = 1.2,
+    density = 1,
     contactSkin = 0
   }) {
     const bodyDesc =
@@ -76,6 +77,7 @@ export default class Physics {
     const colliderDesc = RAPIER.ColliderDesc.cylinder(height * 0.5, radius);
     colliderDesc.setRestitution(restitution);
     colliderDesc.setFriction(friction);
+    colliderDesc.setDensity(density);
 
     if (colliderOffset) {
       colliderDesc.setTranslation(colliderOffset.x, colliderOffset.y, colliderOffset.z);
@@ -136,10 +138,11 @@ export default class Physics {
     return { rigidBody, collider };
   }
 
-  update(delta) {
-    this.accumulator += delta;
+  update(delta, beforeStep = () => {}) {
+    this.accumulator += Math.min(delta, 0.1);
 
     while (this.accumulator >= this.fixedTimeStep) {
+      beforeStep(this.fixedTimeStep);
       this.world.step();
       this.accumulator -= this.fixedTimeStep;
     }

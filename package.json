@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "model:car": "node scripts/build-car.mjs",
+    "test:car": "node scripts/check-car.mjs",
+    "test:world": "node scripts/check-world.mjs",
+    "model:pack": "node scripts/build-vehicle-pack.mjs",
+    "model:world": "node scripts/build-world-pack.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.17.3",
