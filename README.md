@@ -134,9 +134,9 @@ src/           browser client
 | `figure8` | crosses itself once on an overpass: the deck clears the road below by 8.5 m (validated ≥ 6.5 m), 150 m ramps, pillars kept off the lower road |
 | `island` | islets in the sea joined by two bridges over open water |
 
-Themes (visual only): meadow, desert, snow, dusk city, island. Eight named tracks fix both (Sunset Loop,
-Neon Overpass, Coral Isles, Dune Sprint, Frost Bite, Canyon Cross, Lagoon Run, Alpine Knot); any other code
-gets its own, so new codes keep giving new circuits. Each track has elevation, a jump crest with a straight landing, 18 m road,
+Themes (visual only): meadow, desert, snow, dusk city, island. 24 named tracks fix both (every layout ×
+theme combination, listed in `shared/track/presets.ts`); "🎲 Random map" (Solo and lobby host) picks one of
+them, and any other code gets its own layout and theme, so new codes keep giving new circuits. Each track has elevation, a jump crest with a straight landing, 18 m road,
 checkpoints every ~70 m, 8 grid slots on a flat straight, 4 rows of item boxes and a braking-aware racing
 line. Road and barrier colliders, the visual mesh, bot paths and checkpoints are all built from it.
 `validateTrack` checks continuity, minimum radius, self-clearance, world bounds, grades, landing straight,
@@ -267,7 +267,7 @@ real network loss beyond the automated reconnect test. Treat performance on othe
 * Online prediction covers your own car; rivals are extrapolated, so at high latency a rival that
   brakes or turns hard can show a small correction.
 * Bots overtake and avoid traffic but are not perfect in every pile-up; stuck bots reverse, then reset.
-* Only procedurally generated circuits (eight named tracks plus any code); no hand-modelled tracks. The
+* Only procedurally generated circuits (24 named tracks plus any code); no hand-modelled tracks. The
   rear-view mirror adds a second scene render (every other frame) in hood and cockpit views.
 * Engine sounds are synthesised, not recorded.
 * `npm audit` was clean on 2026‑10‑24 (after `npm audit fix` moved Vite to 6.4.5). Do not expose the Vite dev server (`npm run dev`, `host: true`) on untrusted networks; use a production build.

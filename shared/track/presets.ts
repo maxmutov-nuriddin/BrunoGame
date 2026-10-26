@@ -22,8 +22,30 @@ export const TRACK_PRESETS: readonly TrackPreset[] = Object.freeze([
   { id: 'frost', name: 'Frost Bite', seed: 'FROST', blurb: 'Snowy pines and hairpins that punish late braking.', layout: 'loop', theme: 'snow' },
   { id: 'canyon', name: 'Canyon Cross', seed: 'CANYON', blurb: 'Desert figure 8 with a high overpass.', layout: 'figure8', theme: 'desert' },
   { id: 'lagoon', name: 'Lagoon Run', seed: 'LAGOON', blurb: 'Long bridges across a turquoise lagoon.', layout: 'island', theme: 'island' },
-  { id: 'alpine', name: 'Alpine Knot', seed: 'ALPINE', blurb: 'Snow figure 8: climb, cross, drop.', layout: 'figure8', theme: 'snow' }
+  { id: 'alpine', name: 'Alpine Knot', seed: 'ALPINE', blurb: 'Snow figure 8: climb, cross, drop.', layout: 'figure8', theme: 'snow' },
+  { id: 'meadow8', name: 'Clover Cross', seed: 'CLOVER', blurb: 'Green figure 8 with a long overpass.', layout: 'figure8', theme: 'meadow' },
+  { id: 'citylap', name: 'Night Boulevard', seed: 'BOULEVARD', blurb: 'City loop lined with towers.', layout: 'loop', theme: 'dusk' },
+  { id: 'reef', name: 'Reef Runner', seed: 'REEF', blurb: 'Tight island hops between two bridges.', layout: 'island', theme: 'island' },
+  { id: 'mesa', name: 'Mesa Loop', seed: 'MESA', blurb: 'Rolling desert loop with a big crest.', layout: 'loop', theme: 'desert' },
+  { id: 'glacier', name: 'Glacier Bend', seed: 'GLACIER', blurb: 'Icy sweepers and late hairpins.', layout: 'loop', theme: 'snow' },
+  { id: 'valley', name: 'Green Valley', seed: 'VALLEY', blurb: 'Fast, flowing countryside loop.', layout: 'loop', theme: 'meadow' },
+  { id: 'neonknot', name: 'Neon Knot', seed: 'NEONKNOT', blurb: 'Downtown figure 8 under the lights.', layout: 'figure8', theme: 'dusk' },
+  { id: 'atoll', name: 'Atoll Sprint', seed: 'ATOLL', blurb: 'Sea bridges and sandy islets.', layout: 'island', theme: 'island' },
+  { id: 'dustbowl', name: 'Dust Bowl', seed: 'DUSTBOWL', blurb: 'Desert loop of wide, dusty corners.', layout: 'loop', theme: 'desert' },
+  { id: 'frost8', name: 'Frozen Eight', seed: 'FROZEN8', blurb: 'Snowy figure 8 with a steep bridge.', layout: 'figure8', theme: 'snow' },
+  { id: 'harbor', name: 'Harbor Lights', seed: 'HARBORL', blurb: 'Dusk loop of hairpins and straights.', layout: 'loop', theme: 'dusk' },
+  { id: 'palms', name: 'Palm Bay', seed: 'PALMBAY', blurb: 'Lagoon loop with two long bridges.', layout: 'island', theme: 'island' },
+  { id: 'prairie', name: 'Prairie Run', seed: 'PRAIRIE', blurb: 'Open meadow, big jump, three hairpins.', layout: 'loop', theme: 'meadow' },
+  { id: 'oasis', name: 'Oasis Cross', seed: 'OASIS', blurb: 'Desert figure 8 around an oasis.', layout: 'figure8', theme: 'desert' },
+  { id: 'tundra', name: 'Tundra Ring', seed: 'TUNDRA', blurb: 'Long snowy loop, hard braking zones.', layout: 'loop', theme: 'snow' },
+  { id: 'metro8', name: 'Metro Eight', seed: 'METRO8', blurb: 'City figure 8 crossing the main street.', layout: 'figure8', theme: 'dusk' }
 ]);
+
+/** A named track picked at random, never `exceptSeed` (so pressing it always changes the map). */
+export function randomPreset(exceptSeed = ''): TrackPreset {
+  const pool = TRACK_PRESETS.filter((p) => p.seed !== exceptSeed);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 
 /** Generation costs ~10 ms (up to ~60 ms); keep recent tracks, but bounded so custom seeds cannot grow memory. */
 const CACHE_LIMIT = 32;

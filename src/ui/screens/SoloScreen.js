@@ -1,6 +1,6 @@
 import { html, onAction, $ } from '../dom.js';
 import { escapeHtml, formatTime } from '../format.js';
-import { TRACK_PRESETS } from '../../../shared/track/presets.ts';
+import { TRACK_PRESETS, randomPreset } from '../../../shared/track/presets.ts';
 import { normalizeSeedCode, randomSeedCode } from '../../../shared/rng.ts';
 import { findVehicle } from '../../../shared/vehicles.ts';
 import { Records } from '../../core/Settings.js';
@@ -37,7 +37,7 @@ export default class SoloScreen {
         </div>
         <div class="solo__grid">
           <div class="panel solo__tracks">
-            <h3>Track</h3>
+            <h3>Track <button class="btn btn--small" data-act="randomMap">🎲 Random map</button></h3>
             <div class="track-preview">
               <canvas class="track-preview__map" data-preview></canvas>
               <div class="track-preview__info">
@@ -89,6 +89,10 @@ export default class SoloScreen {
       mode: (target) => this.change({ mode: target.dataset.mode }),
       track: (target) => this.change({ seed: target.dataset.seed }),
       random: () => this.change({ seed: randomSeedCode() }),
+      randomMap: () => {
+        this.change({ seed: randomPreset(this.setup.seed).seed });
+        this.el.querySelector('.track-item.is-selected')?.scrollIntoView({ block: 'nearest' });
+      },
       garage: () => onGarage(),
       start: () => {
         this.save();

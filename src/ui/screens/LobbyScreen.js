@@ -6,7 +6,7 @@ import { qrSvg } from '../qr.js';
 
 /** A QR pointing at localhost only works on this computer; tell the host how to reach it from a phone. */
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-import { TRACK_PRESETS, trackForSeed } from '../../../shared/track/presets.ts';
+import { TRACK_PRESETS, randomPreset, trackForSeed } from '../../../shared/track/presets.ts';
 import { LAYOUT_LABELS, THEME_LABELS, drawTrackPreview, trackFacts } from '../trackPreview.js';
 import { normalizeSeedCode } from '../../../shared/rng.ts';
 
@@ -43,6 +43,7 @@ export default class LobbyScreen {
             <label class="field">Track
               <select data-track>${TRACK_PRESETS.map((t) => `<option value="${t.seed}">${escapeHtml(t.name)}</option>`).join('')}<option value="custom">Custom code…</option></select>
             </label>
+            <button class="btn btn--small" data-act="randomMap" data-host-only>🎲 Random map</button>
             <label class="field" data-custom-row hidden>Track code <input data-custom maxlength="12" /></label>
             <label class="field">Laps <select data-laps>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}">${n}</option>`).join('')}</select></label>
             <label class="field">Bot difficulty <select data-difficulty><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
@@ -68,6 +69,10 @@ export default class LobbyScreen {
       invite: () => this.copy(this.inviteUrl(), 'Invite link copied'),
       copyCode: () => this.copy(this.room.code, 'Room code copied'),
       pick: (target) => this.pickCar(target.dataset.id),
+      randomMap: () => {
+        const preset = randomPreset(this.room?.settings.trackSeed);
+        game.net.send({ type: 'updateSettings', settings: { trackSeed: preset.seed, trackName: preset.name } });
+      },
       ready: () => game.net.send({ type: 'setReady', ready: !this.me()?.ready }),
       start: () => game.net.send({ type: 'startRace' })
     }, (act) => game.audio.play(act === 'leave' ? 'uiBack' : 'ui'));
@@ -161,6 +166,7 @@ export default class LobbyScreen {
     this.fields.fill.checked = s.fillBots;
     this.fields.items.checked = s.itemsEnabled;
     for (const key of ['track', 'custom', 'laps', 'difficulty', 'max', 'fill', 'items']) this.fields[key].disabled = !host;
+    $(this.el, '[data-host-only]').hidden = !host;
     if (me && me.vehicleId !== this.shownVehicle) {
       this.shownVehicle = me.vehicleId;
       this.showCar(me.vehicleId);
