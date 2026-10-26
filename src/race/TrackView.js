@@ -9,20 +9,60 @@ const CURB_WIDTH = 1.1;
 const CURB_MIN_CURVATURE = 1 / 85;
 const POST_SPACING_SAMPLES = 5;
 const SLOPE_WIDTH = 9;
+/** Bridge decks: slab thickness below the road, pillar spacing (samples) and size. */
+const DECK_DEPTH = 1.4;
+const DECK_OVERHANG = 1.6;
+const PILLAR_SPACING_SAMPLES = 7;
+const PILLAR_SIZE = 1.3;
+/** Pillars never stand closer than this to a road passing underneath (m beyond its half width). */
+const PILLAR_ROAD_CLEARANCE = 3;
+const WATER_FLOOR = -1.5;
 
 /** Visual track built from the same definition as the physics colliders. */
 export default class TrackView {
-  constructor(track, accent = '#ff4f6d') {
+  constructor(track, theme) {
     this.track = track;
+    this.theme = theme;
     this.group = new THREE.Group();
     this.group.name = 'Track';
     this.disposables = [];
+    const n = track.samples.length;
+    this.loop = [...Array.from({ length: n }, (_, i) => i), 0];
+    // Embankments go down to the ground; bridge decks have open space below instead.
+    this.groundRuns = this.runs((s) => !s.bridge);
+    this.deckRuns = this.runs((s) => s.bridge);
     this.buildRoad();
     this.buildCurbs();
-    for (const side of [1, -1]) this.buildBarrier(side, accent);
+    for (const side of [1, -1]) this.buildBarrier(side, theme.accent);
     for (const side of [1, -1]) this.buildSlope(side);
-    this.buildStart(accent);
+    this.buildDecks();
+    this.buildStart(theme.accent);
     this.buildRampMarks();
+  }
+
+  /**
+   * Consecutive sample-index runs where `predicate` holds, each padded by one sample on both ends so its
+   * geometry meets the neighbouring run. The whole loop (closed) when every sample matches.
+   */
+  runs(predicate) {
+    const { samples } = this.track;
+    const n = samples.length;
+    const first = samples.findIndex((s) => !predicate(s));
+    if (first < 0) return [this.loop];
+    const out = [];
+    let current = null;
+    for (let k = 0; k <= n; k++) {
+      const i = (first + k) % n;
+      if (k < n && predicate(samples[i])) {
+        current ??= [(i - 1 + n) % n];
+        current.push(i);
+      } else if (current) {
+        current.push(i);
+        out.push(current);
+        current = null;
+      }
+    }
+    return out;
   }
 
   track_(geometry, material) {
@@ -31,19 +71,22 @@ export default class TrackView {
     return new THREE.Mesh(geometry, material);
   }
 
-  ribbon(offsetA, offsetB, heightA, heightB, uvAcross = [0, 1]) {
+  /** Strip between two lateral offsets along `run` (sample indices, default the closed loop). */
+  ribbon(offsetA, offsetB, heightA, heightB, uvAcross = [0, 1], run = this.loop) {
     const { samples } = this.track;
-    const n = samples.length;
-    const positions = new Float32Array((n + 1) * 2 * 3);
-    const uvs = new Float32Array((n + 1) * 2 * 2);
-    for (let i = 0; i <= n; i++) {
-      const s = samples[i % n];
-      const v = (i === n ? this.track.length : s.s) / ROAD_V_REPEAT;
-      positions.set([s.x + s.nx * offsetA, s.y + heightA(s), s.z + s.nz * offsetA, s.x + s.nx * offsetB, s.y + heightB(s), s.z + s.nz * offsetB], i * 6);
-      uvs.set([uvAcross[0], v, uvAcross[1], v], i * 4);
-    }
+    const count = run.length;
+    const positions = new Float32Array(count * 2 * 3);
+    const uvs = new Float32Array(count * 2 * 2);
+    let lap = 0;
+    run.forEach((index, k) => {
+      const s = samples[index];
+      if (k > 0 && index < run[k - 1]) lap += this.track.length;
+      const v = (s.s + lap) / ROAD_V_REPEAT;
+      positions.set([s.x + s.nx * offsetA, s.y + heightA(s), s.z + s.nz * offsetA, s.x + s.nx * offsetB, s.y + heightB(s), s.z + s.nz * offsetB], k * 6);
+      uvs.set([uvAcross[0], v, uvAcross[1], v], k * 4);
+    });
     const indices = [];
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < count - 1; i++) {
       const a = i * 2, b = i * 2 + 1, c = (i + 1) * 2, d = (i + 1) * 2 + 1;
       indices.push(a, b, c, b, d, c);
     }
@@ -113,9 +156,11 @@ export default class TrackView {
     const top = this.track_(this.ribbon(inner, outer, () => BARRIER_VISIBLE_HEIGHT, () => BARRIER_VISIBLE_HEIGHT), topMaterial);
     top.castShadow = true;
     this.group.add(top);
-    const back = this.track_(this.ribbon(outer, outer, () => BARRIER_VISIBLE_HEIGHT, (s) => -s.y - 0.1), topMaterial.clone());
-    back.material.side = THREE.DoubleSide;
-    this.group.add(back);
+    const backMaterial = topMaterial.clone();
+    backMaterial.side = THREE.DoubleSide;
+    this.disposables.push(backMaterial);
+    for (const run of this.groundRuns) this.group.add(this.track_(this.ribbon(outer, outer, () => BARRIER_VISIBLE_HEIGHT, (s) => -s.y - 0.1, [0, 1], run), backMaterial));
+    for (const run of this.deckRuns) this.group.add(this.track_(this.ribbon(outer, outer, () => BARRIER_VISIBLE_HEIGHT, () => -DECK_DEPTH, [0, 1], run), backMaterial));
 
     this.buildPosts(side, half + BARRIER_THICKNESS / 2, accent);
   }
@@ -139,11 +184,56 @@ export default class TrackView {
   /** Grass embankment from the barrier down to the ground so raised sections look solid. */
   buildSlope(side) {
     const half = this.track.width / 2 + BARRIER_INSET + BARRIER_THICKNESS;
-    const material = new THREE.MeshStandardMaterial({ color: '#7fb862', roughness: 1 });
-    const slope = this.track_(this.ribbon(side * half, side * (half + SLOPE_WIDTH), () => -0.05, (s) => -s.y + 0.02), material);
-    slope.material.side = THREE.DoubleSide;
-    slope.receiveShadow = true;
-    this.group.add(slope);
+    const material = new THREE.MeshStandardMaterial({ color: this.theme.slope, roughness: 1, side: THREE.DoubleSide });
+    this.disposables.push(material);
+    for (const run of this.groundRuns) {
+      const slope = this.track_(this.ribbon(side * half, side * (half + SLOPE_WIDTH), () => -0.05, (s) => -s.y + 0.02, [0, 1], run), material);
+      slope.receiveShadow = true;
+      this.group.add(slope);
+    }
+  }
+
+  /** Concrete slab under every bridge deck, held up by pillars that keep clear of any road below. */
+  buildDecks() {
+    if (this.deckRuns.length === 0 || this.deckRuns[0] === this.loop) return;
+    const { samples, width } = this.track;
+    const half = width / 2 + BARRIER_INSET + BARRIER_THICKNESS + 0.2;
+    const concrete = new THREE.MeshStandardMaterial({ color: '#b9bec7', roughness: 0.85, side: THREE.DoubleSide });
+    this.disposables.push(concrete);
+    const pillars = [];
+    const water = this.theme.ground === 'island';
+    for (const run of this.deckRuns) {
+      this.group.add(this.track_(this.ribbon(half, -half, () => -DECK_DEPTH, () => -DECK_DEPTH, [0, 1], run), concrete));
+      const inner = new Set(run);
+      for (let k = 1; k < run.length - 1; k += PILLAR_SPACING_SAMPLES) {
+        const s = samples[run[k]];
+        for (const lateral of [-(width / 2 - 1.5), width / 2 - 1.5]) {
+          const x = s.x + s.nx * lateral;
+          const z = s.z + s.nz * lateral;
+          if (this.roadBelow(x, z, s.y, inner)) continue;
+          const bottom = water ? WATER_FLOOR : 0;
+          pillars.push({ x, z, bottom, top: s.y - DECK_DEPTH });
+        }
+      }
+    }
+    if (pillars.length === 0) return;
+    const geometry = new THREE.BoxGeometry(PILLAR_SIZE, 1, PILLAR_SIZE);
+    this.disposables.push(geometry);
+    const mesh = new THREE.InstancedMesh(geometry, concrete, pillars.length);
+    const matrix = new THREE.Matrix4();
+    pillars.forEach((p, i) => {
+      const height = Math.max(0.5, p.top - p.bottom);
+      matrix.compose(new THREE.Vector3(p.x, p.bottom + height / 2, p.z), new THREE.Quaternion(), new THREE.Vector3(1, height, 1));
+      mesh.setMatrixAt(i, matrix);
+    });
+    mesh.castShadow = true;
+    this.group.add(mesh);
+  }
+
+  /** True if a lower stretch of road (not part of this deck) runs under the point. */
+  roadBelow(x, z, deckY, deckSamples) {
+    const reach = this.track.width / 2 + PILLAR_ROAD_CLEARANCE;
+    return this.track.samples.some((s, i) => !deckSamples.has(i) && s.y < deckY - 3 && Math.hypot(s.x - x, s.z - z) < reach);
   }
 
   buildStart(accent) {

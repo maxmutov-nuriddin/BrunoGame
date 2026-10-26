@@ -1,11 +1,12 @@
 import type { TrackDefinition } from './types.ts';
+import { OVERPASS_MIN_CLEARANCE } from './layouts.ts';
 
 export interface TrackIssue { code: string; message: string; sample?: number }
 
-const MIN_LENGTH = 800;
-const MAX_LENGTH = 1900;
+const MIN_LENGTH = 1200;
+const MAX_LENGTH = 3800;
 const MIN_RADIUS = 15;
-const WORLD_LIMIT = 290;
+const WORLD_LIMIT = 440;
 const CLEARANCE_MARGIN = 10;
 const MAX_GRADE = 0.12;
 const MAX_RAMP_GRADE = 0.2;
@@ -22,7 +23,8 @@ export function validateTrack(track: TrackDefinition): TrackIssue[] {
     ...checkGrid(track),
     ...checkCheckpoints(track),
     ...checkPickups(track),
-    ...checkRacingLine(track)
+    ...checkRacingLine(track),
+    ...checkLayout(track)
   ];
 }
 
@@ -86,6 +88,8 @@ function checkClearance(track: TrackDefinition): TrackIssue[] {
           const arc = Math.min(Math.abs(samples[j].s - a.s), length - Math.abs(samples[j].s - a.s));
           if (arc < minArcSeparation) continue;
           const distance = Math.hypot(samples[j].x - a.x, samples[j].z - a.z);
+          // An overpass: one road passes over the other with headroom to spare.
+          if (Math.abs(samples[j].y - a.y) >= OVERPASS_MIN_CLEARANCE) continue;
           if (distance < minDistance) {
             return [{ code: 'overlap', message: `road comes within ${distance.toFixed(1)}m of itself`, sample: i }];
           }
@@ -155,6 +159,18 @@ function checkPickups(track: TrackDefinition): TrackIssue[] {
     if (Math.abs(lateral) > track.width / 2 - 1) return [{ code: 'pickup', message: `pickup ${pickup.id} is off the road` }];
   }
   return track.pickups.length >= 6 ? [] : [{ code: 'pickup', message: 'not enough item boxes' }];
+}
+
+/** Layout promises: a figure 8 has a real overpass, an island has bridges over water. */
+function checkLayout(track: TrackDefinition): TrackIssue[] {
+  const { samples, crossing, layout, bridges } = track;
+  if (layout === 'figure8') {
+    if (!crossing) return [{ code: 'layout', message: 'figure 8 without a crossing' }];
+    const headroom = samples[crossing.upper].y - samples[crossing.lower].y;
+    if (headroom < OVERPASS_MIN_CLEARANCE) return [{ code: 'layout', message: `overpass headroom ${headroom.toFixed(1)}m`, sample: crossing.upper }];
+  }
+  if (layout === 'island' && bridges.length < 2) return [{ code: 'layout', message: 'island track needs two bridges' }];
+  return [];
 }
 
 function checkRacingLine(track: TrackDefinition): TrackIssue[] {

@@ -9,6 +9,9 @@ export const BARRIER_THICKNESS = 1.2;
 const ROAD_EDGE_OVERLAP = 1.4;
 const ROAD_FRICTION = 1.9;
 const BARRIER_FRICTION = 0.35;
+const GROUND_SIZE = 1400;
+/** Under a bridge deck the barrier stops this far below the road, leaving the space beneath open. */
+const DECK_BARRIER_DEPTH = 1.4;
 
 /** Road ribbon, both barriers and the ground below, all built from one track definition. */
 export function buildTrackColliders(physics: PhysicsWorld, track: TrackDefinition): RigidBody[] {
@@ -23,7 +26,7 @@ export function buildTrackColliders(physics: PhysicsWorld, track: TrackDefinitio
     );
   }
   bodies.push(
-    physics.createBox({ position: { x: 0, y: -0.5, z: 0 }, size: { x: 800, y: 1, z: 800 }, friction: 1.6 }).rigidBody
+    physics.createBox({ position: { x: 0, y: -0.5, z: 0 }, size: { x: GROUND_SIZE, y: 1, z: GROUND_SIZE }, friction: 1.6 }).rigidBody
   );
   return bodies;
 }
@@ -56,7 +59,7 @@ function barrierMesh(track: TrackDefinition, side: number, halfWidth: number) {
   samples.forEach((s, i) => {
     const ix = s.x + s.nx * inner * side, iz = s.z + s.nz * inner * side;
     const ox = s.x + s.nx * outer * side, oz = s.z + s.nz * outer * side;
-    const bottom = Math.min(s.y - 1, -0.2);
+    const bottom = s.bridge ? s.y - DECK_BARRIER_DEPTH : Math.min(s.y - 1, -0.2);
     const top = s.y + BARRIER_COLLIDER_HEIGHT;
     vertices.set([ix, bottom, iz, ix, top, iz, ox, top, oz, ox, bottom, oz], i * 12);
   });

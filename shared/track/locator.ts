@@ -12,6 +12,8 @@ export interface TrackLocation {
 }
 
 const LOCAL_WINDOW = 40;
+/** Height differences count this much more than horizontal ones, so an overpass never claims a car below it. */
+const VERTICAL_WEIGHT = 3;
 
 /** Nearest-sample queries with a temporal hint so per-tick lookups stay O(window). */
 export class TrackLocator {
@@ -23,13 +25,14 @@ export class TrackLocator {
     this.n = track.samples.length;
   }
 
-  locate(x: number, z: number, hint = -1): TrackLocation {
+  /** `y` (optional) disambiguates the two levels of an overpass. */
+  locate(x: number, z: number, hint = -1, y?: number): TrackLocation {
     const { samples } = this.track;
     let best = 0;
     let bestDistance = Infinity;
     const scan = (i: number) => {
       const s = samples[i];
-      const d = (s.x - x) ** 2 + (s.z - z) ** 2;
+      const d = (s.x - x) ** 2 + (s.z - z) ** 2 + (y === undefined ? 0 : ((s.y - y) * VERTICAL_WEIGHT) ** 2);
       if (d < bestDistance) {
         bestDistance = d;
         best = i;
@@ -48,7 +51,7 @@ export class TrackLocator {
     const along = dx * s.tx + dz * s.tz;
     const lateral = dx * s.nx + dz * s.nz;
     const arc = (s.s + along + this.track.length) % this.track.length;
-    return { index: best, lateral, along, s: arc, distance: Math.sqrt(bestDistance) };
+    return { index: best, lateral, along, s: arc, distance: Math.hypot(dx, dz) };
   }
 
   sampleAt(index: number) {

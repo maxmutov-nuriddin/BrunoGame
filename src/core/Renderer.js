@@ -21,6 +21,8 @@ const MAX_SPEED_BLUR = 0.11;
 const EFFECT_SMOOTHING = 6;
 /** Below this the speed blur is invisible, so its full-screen pass is skipped. */
 const SPEED_BLUR_EPSILON = 0.002;
+/** The rear-view mirror re-renders the scene every Nth frame and shows the last image in between. */
+const MIRROR_EVERY_FRAMES = 2;
 
 /** One WebGL renderer + post chain shared by every scene (menu, garage, race). */
 export default class Renderer {
@@ -54,6 +56,17 @@ export default class Renderer {
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(this.speedBlurPass);
     this.composer.addPass(new OutputPass());
+
+    // Rear-view mirror: the scene from a rear camera into a small target, then a horizontally flipped quad.
+    this.mirror = null;
+    this.mirrorTarget = null;
+    this.mirrorFrame = 0;
+    this.mirrorCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const quad = new THREE.PlaneGeometry(2, 2);
+    const uv = quad.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
+    this.mirrorQuad = new THREE.Mesh(quad, new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false }));
+    this.mirrorScene = new THREE.Scene().add(this.mirrorQuad);
 
     this.speedTarget = 0;
     this.speedAmount = 0;
@@ -130,6 +143,44 @@ export default class Renderer {
     this.speedBlurPass.enabled = blur > SPEED_BLUR_EPSILON;
     this.speedBlurPass.setStrength(blur);
     this.composer.render(delta);
+    if (this.mirror) this.renderMirror();
+  }
+
+  /** `{ scene, camera, rect: { x, y, width, height } }` in CSS pixels from the top-left, or null to hide. */
+  setMirror(mirror) {
+    this.mirror = mirror;
+  }
+
+  renderMirror() {
+    const { scene, camera, rect } = this.mirror;
+    const r = this.renderer;
+    const pixelRatio = r.getPixelRatio();
+    const width = Math.max(1, Math.round(rect.width * pixelRatio));
+    const height = Math.max(1, Math.round(rect.height * pixelRatio));
+    if (!this.mirrorTarget || this.mirrorTarget.width !== width || this.mirrorTarget.height !== height) {
+      this.mirrorTarget?.dispose();
+      this.mirrorTarget = new THREE.WebGLRenderTarget(width, height, { type: THREE.HalfFloatType });
+      this.mirrorQuad.material.map = this.mirrorTarget.texture;
+      this.mirrorQuad.material.needsUpdate = true;
+      this.mirrorFrame = 0;
+    }
+    if (this.mirrorFrame++ % MIRROR_EVERY_FRAMES === 0) {
+      camera.aspect = rect.width / rect.height;
+      camera.updateProjectionMatrix();
+      r.setRenderTarget(this.mirrorTarget);
+      r.render(scene, camera);
+      r.setRenderTarget(null);
+    }
+    const bottom = window.innerHeight - rect.y - rect.height;
+    const autoClear = r.autoClear;
+    r.autoClear = false;
+    r.setScissorTest(true);
+    r.setScissor(rect.x, bottom, rect.width, rect.height);
+    r.setViewport(rect.x, bottom, rect.width, rect.height);
+    r.render(this.mirrorScene, this.mirrorCamera);
+    r.setScissorTest(false);
+    r.setViewport(0, 0, window.innerWidth, window.innerHeight);
+    r.autoClear = autoClear;
   }
 
   get stats() {

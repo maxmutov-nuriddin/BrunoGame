@@ -33,7 +33,7 @@ export default class Hud {
       </div>
       <div class="hud-item" data-item-slot ${mode === 'timeTrial' ? 'hidden' : ''}>
         <div class="hud-item__icon" data-item-icon></div>
-        <div class="hud-item__text"><b data-item-name>No item</b><small>${keyLabel(bindings.item?.[0])} to use</small></div>
+        <div class="hud-item__text"><b data-item-name>No item</b><small>${keyLabel(bindings.item?.[0])} fire · hold ${keyLabel(bindings.lookBack?.[0])} to aim back</small></div>
       </div>
       <div class="hud-count" data-count></div>
       <div class="hud-banner" data-banner></div>

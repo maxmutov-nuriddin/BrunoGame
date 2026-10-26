@@ -192,7 +192,7 @@ export default class RaceSimulation {
 
     if (this.phase === 'racing' && !car.finished && !car.isWrecked(this.tick)) {
       if (input.reset && !car.prevInput.reset) this.tryManualReset(car);
-      if (input.useItem && !car.prevInput.useItem) this.combat.useItem(car);
+      if (input.useItem && !car.prevInput.useItem) this.combat.useItem(car, input.lookBack);
     }
     car.prevInput = input;
     const p = car.physics.body.translation();
@@ -213,7 +213,7 @@ export default class RaceSimulation {
     }
 
     const p = physics.body.translation();
-    const location = this.locator.locate(p.x, p.z, car.sampleHint);
+    const location = this.locator.locate(p.x, p.z, car.sampleHint, p.y);
     car.sampleHint = location.index;
     car.lateral = location.lateral;
     const sample = this.track.samples[location.index];

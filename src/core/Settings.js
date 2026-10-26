@@ -3,7 +3,7 @@ import { DEFAULT_VEHICLE, findVehicle } from '../../shared/vehicles.ts';
 const SETTINGS_KEY = 'bruno-race:settings';
 const RECORDS_KEY = 'bruno-race:records';
 const SCHEMA_VERSION = 3;
-export const CAMERA_MODES = ['chase', 'far', 'hood'];
+export const CAMERA_MODES = ['chase', 'far', 'hood', 'cockpit'];
 
 export const QUALITY_LEVELS = ['low', 'medium', 'high'];
 
@@ -35,6 +35,7 @@ const defaults = () => ({
   cameraMode: 'chase',
   fpsCap: 60,
   reducedMotion: false,
+  rearMirror: true,
   volume: { master: 0.8, music: 0.5, sfx: 0.8 },
   bindings: structuredClone(DEFAULT_BINDINGS),
   serverUrl: ''
@@ -85,6 +86,7 @@ function migrate(stored) {
     vehicleId: findVehicle(stored.vehicleId ?? legacyVehicle).id,
     quality: QUALITY_LEVELS.includes(stored.quality) ? stored.quality : base.quality,
     reducedMotion: stored.reducedMotion === true,
+    rearMirror: stored.rearMirror !== false,
     cameraMode: CAMERA_MODES.includes(stored.cameraMode) ? stored.cameraMode : base.cameraMode,
     fpsCap: [30, 60, 0].includes(stored.fpsCap) ? stored.fpsCap : base.fpsCap,
     volume: {

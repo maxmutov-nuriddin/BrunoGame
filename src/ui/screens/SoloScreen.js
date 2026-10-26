@@ -5,6 +5,7 @@ import { normalizeSeedCode, randomSeedCode } from '../../../shared/rng.ts';
 import { findVehicle } from '../../../shared/vehicles.ts';
 import { Records } from '../../core/Settings.js';
 import { trackForSeed } from '../../../shared/track/presets.ts';
+import { LAYOUT_LABELS, THEME_LABELS, drawLater, drawTrackPreview, trackFacts } from '../trackPreview.js';
 
 const STORE_KEY = 'bruno-race:solo';
 
@@ -35,10 +36,25 @@ export default class SoloScreen {
           <button data-act="mode" data-mode="timeTrial" role="tab">Time trial</button>
         </div>
         <div class="solo__grid">
-          <div class="panel">
+          <div class="panel solo__tracks">
             <h3>Track</h3>
+            <div class="track-preview">
+              <canvas class="track-preview__map" data-preview></canvas>
+              <div class="track-preview__info">
+                <b data-preview-name></b>
+                <span class="track-badges" data-preview-badges></span>
+                <small data-preview-facts></small>
+              </div>
+            </div>
             <div class="track-list">
-              ${TRACK_PRESETS.map((t) => `<button class="track-item" data-act="track" data-seed="${t.seed}"><b>${escapeHtml(t.name)}</b><small>${escapeHtml(t.blurb)}</small></button>`).join('')}
+              ${TRACK_PRESETS.map((t) => `
+                <button class="track-item" data-act="track" data-seed="${t.seed}">
+                  <canvas class="track-item__map"></canvas>
+                  <b>${escapeHtml(t.name)}</b>
+                  <span class="track-badges"><em>${escapeHtml(LAYOUT_LABELS[t.layout])}</em><em>${escapeHtml(THEME_LABELS[t.theme])}</em></span>
+                  <small data-facts></small>
+                  <small class="muted">${escapeHtml(t.blurb)}</small>
+                </button>`).join('')}
             </div>
             <label class="field">Track code
               <span class="field__row"><input data-seed maxlength="12" spellcheck="false" autocomplete="off" /><button class="btn btn--small" data-act="random">Random</button></span>
@@ -90,6 +106,12 @@ export default class SoloScreen {
     this.inputs.items.addEventListener('change', () => this.change({ items: this.inputs.items.checked }));
     game.screens.appendChild(this.el);
     this.render();
+    // Every preset's preview and facts, one per frame (each needs its track generated or cached).
+    this.cancelPreviews = drawLater([...this.el.querySelectorAll('.track-item')].map((card) => () => {
+      const track = trackForSeed(card.dataset.seed);
+      drawTrackPreview(card.querySelector('canvas'), track);
+      card.querySelector('[data-facts]').textContent = trackFacts(track);
+    }));
   }
 
   change(patch) {
@@ -119,6 +141,13 @@ export default class SoloScreen {
     this.inputs.items.checked = setup.items;
     $(el, '[data-race-only]').hidden = setup.mode === 'timeTrial';
     const track = trackForSeed(setup.seed);
+    if (this.previewSeed !== setup.seed) {
+      this.previewSeed = setup.seed;
+      drawTrackPreview($(el, '[data-preview]'), track);
+      $(el, '[data-preview-name]').textContent = track.name;
+      $(el, '[data-preview-badges]').innerHTML = `<em>${escapeHtml(LAYOUT_LABELS[track.layout])}</em><em>${escapeHtml(THEME_LABELS[track.theme])}</em>`;
+      $(el, '[data-preview-facts]').textContent = `${trackFacts(track)} · code ${setup.seed}`;
+    }
     $(el, '[data-track-info]').textContent = `${track.name} · ${Math.round(track.length)} m · ${track.hairpins.length} hairpin${track.hairpins.length === 1 ? '' : 's'}${track.ramp ? ' · jump' : ''}${track.source === 'fallback' ? ' · (fallback layout)' : ''}`;
     const record = Records.get(track, this.game.settings.get('vehicleId'));
     $(el, '[data-record]').textContent = setup.mode === 'timeTrial' ? (record ? `Your record: best lap ${formatTime(record.bestLapMs)}` : 'No record yet for this track and car.') : '';
@@ -126,6 +155,7 @@ export default class SoloScreen {
   }
 
   dispose() {
+    this.cancelPreviews?.();
     this.el.remove();
   }
 }

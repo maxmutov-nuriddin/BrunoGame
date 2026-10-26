@@ -130,3 +130,19 @@ export function beamTexture() {
     c.fillRect(0, 0, w, h);
   }, { repeat: false });
 }
+
+/** Plain ground (sand, snow) with soft blotches so it never looks like flat paint. */
+export function groundTexture(color) {
+  return canvasTexture(256, 256, (c, w, h) => {
+    c.fillStyle = color;
+    c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 1400; i++) {
+      const shade = Math.random() < 0.5 ? 255 : 0;
+      c.fillStyle = `rgba(${shade},${shade},${shade},${Math.random() * 0.05})`;
+      const r = 2 + Math.random() * 10;
+      c.beginPath();
+      c.arc(Math.random() * w, Math.random() * h, r, 0, Math.PI * 2);
+      c.fill();
+    }
+  });
+}

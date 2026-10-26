@@ -12,6 +12,20 @@ export interface TrackSample {
   s: number;
   /** Signed curvature (1/m), positive = turning left. */
   curvature: number;
+  /** Raised deck with open space below (overpass or bridge over water): no embankment, pillars instead. */
+  bridge?: boolean;
+}
+
+/** loop: one level; figure8: crosses itself once on an overpass; island: islets joined by bridges over water. */
+export type TrackLayout = 'loop' | 'figure8' | 'island';
+/** Visual theme only; physics are identical. */
+export type TrackTheme = 'meadow' | 'desert' | 'snow' | 'dusk' | 'island';
+
+export interface TrackCrossing {
+  /** Sample on the raised branch (the overpass deck). */
+  upper: number;
+  /** Sample on the branch passing underneath. */
+  lower: number;
 }
 
 export interface Checkpoint {
@@ -61,4 +75,9 @@ export interface TrackDefinition {
   ramp: { start: number; end: number } | null;
   hairpins: number[];
   barrierHeight: number;
+  layout: TrackLayout;
+  theme: TrackTheme;
+  crossing: TrackCrossing | null;
+  /** Sample ranges (start <= end, never wrapping the start line) drawn as bridges. */
+  bridges: { start: number; end: number }[];
 }

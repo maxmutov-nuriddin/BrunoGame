@@ -10,6 +10,8 @@ import { RULES } from '../../shared/race/rules.ts';
 import { WEAPON, ITEMS } from '../../shared/race/items.ts';
 import { VEHICLES } from '../../shared/vehicles.ts';
 import { trackFingerprint } from '../../shared/track/fingerprint.ts';
+import { TRACK_PRESETS, trackForSeed } from '../../shared/track/presets.ts';
+import { OVERPASS_MIN_CLEARANCE } from '../../shared/track/layouts.ts';
 
 const track = generateTrack('TEST-TRACK').track;
 
@@ -63,6 +65,41 @@ test('generated tracks are valid across many seeds and the fallback is valid', (
     assert.deepEqual(validateTrack(t), [], `seed VALID-${i}`);
   }
   assert.deepEqual(validateTrack(buildFallbackTrack('FB', 'Fallback')), []);
+});
+
+test('every named track generates without the fallback and keeps its layout promise', () => {
+  for (const preset of TRACK_PRESETS) {
+    const t = trackForSeed(preset.seed);
+    assert.equal(t.source, 'generated', preset.name);
+    assert.equal(t.layout, preset.layout, preset.name);
+    assert.deepEqual(validateTrack(t), [], preset.name);
+    assert.ok(t.length > 2000, `${preset.name} is a long circuit (${t.length.toFixed(0)} m)`);
+    if (t.layout === 'figure8') {
+      const headroom = t.samples[t.crossing!.upper].y - t.samples[t.crossing!.lower].y;
+      assert.ok(headroom >= OVERPASS_MIN_CLEARANCE, `${preset.name} overpass headroom ${headroom.toFixed(1)} m`);
+      assert.ok(t.samples[t.crossing!.upper].bridge, `${preset.name} deck is open underneath`);
+    }
+    if (t.layout === 'island') assert.ok(t.bridges.length >= 2, `${preset.name} has bridges over water`);
+  }
+});
+
+test('on a figure 8 bots drive over the overpass and under it, completing the lap', async () => {
+  const eight = trackForSeed('NEON');
+  const participants = Array.from({ length: 4 }, (_, i) => ({ id: `bot${i}`, name: `Bot ${i}`, vehicleId: VEHICLES[i].id, kind: 'bot' as const, difficulty: 'hard' as const }));
+  const sim = await RaceSimulation.create(config({ track: eight, laps: 1, participants }));
+  const { upper, lower } = eight.crossing!;
+  const passed = { over: 0, under: 0 };
+  runUntil(sim, () => sim.phase === 'finished', 60 * 60 * 4, () => {
+    for (const car of sim.cars) {
+      const y = car.physics.body.translation().y;
+      if (Math.abs(car.sampleHint - upper) < 3 && y > eight.samples[upper].y - 2) passed.over += 1;
+      if (Math.abs(car.sampleHint - lower) < 3 && y < eight.samples[lower].y + 3) passed.under += 1;
+    }
+  });
+  assert.equal(sim.phase, 'finished');
+  assert.ok(sim.results().filter((r) => r.finished).length >= 3, 'bots finish the figure 8');
+  assert.ok(passed.over > 0 && passed.under > 0, `went over (${passed.over}) and under (${passed.under})`);
+  sim.dispose();
 });
 
 test('cars cannot move before GO', async () => {
@@ -157,6 +194,45 @@ test('manual reset never moves a car forward and has a cooldown', async () => {
   });
   assert.equal(respawns, 1, 'cooldown blocks repeated resets');
   assert.ok(car.progress <= before + 0.5, `reset moved back (${before.toFixed(1)} -> ${car.progress.toFixed(1)})`);
+  sim.dispose();
+});
+
+test('E fires forward, look-back + E fires backward; mines are thrown ahead or dropped behind', async () => {
+  const sim = await RaceSimulation.create(config({ itemsEnabled: true }));
+  const car = sim.carsById.get('p1')!;
+  runUntil(sim, () => sim.phase === 'racing', sim.goTick + 2);
+  // Ahead along the car's heading is positive, behind negative.
+  const along = (x: number, z: number) => {
+    const p = car.physics.body.translation();
+    return (x - p.x) * car.physics.forward.x + (z - p.z) * car.physics.forward.z;
+  };
+  const use = (item: 'pulse' | 'mine', lookBack: boolean) => {
+    car.item = item;
+    car.itemReadyTick = 0;
+    car.prevInput = NEUTRAL_INPUT;
+    sim.setInput('p1', { ...NEUTRAL_INPUT, useItem: true, lookBack });
+    sim.step();
+    sim.setInput('p1', NEUTRAL_INPUT);
+  };
+
+  use('pulse', false);
+  let shot = sim.combat.projectiles.at(-1)!;
+  assert.ok(along(shot.x, shot.z) > 0 && along(shot.x + shot.vx, shot.z + shot.vz) > along(shot.x, shot.z), 'E: pulse flies forward');
+  use('pulse', true);
+  shot = sim.combat.projectiles.at(-1)!;
+  assert.ok(along(shot.x, shot.z) < 0 && along(shot.x + shot.vx, shot.z + shot.vz) < along(shot.x, shot.z), 'Q+E: pulse flies backward');
+
+  use('mine', false);
+  const thrown = sim.combat.mines.at(-1)!;
+  assert.ok(along(thrown.x, thrown.z) > 15, `E: mine thrown ahead (${along(thrown.x, thrown.z).toFixed(1)} m)`);
+  use('mine', true);
+  const dropped = sim.combat.mines.at(-1)!;
+  assert.ok(along(dropped.x, dropped.z) < 0, 'Q+E: mine dropped behind');
+
+  // The owner may drive over its own thrown mine without setting it off.
+  car.physics.teleport({ x: thrown.x, y: thrown.y + 0.6, z: thrown.z }, Math.atan2(-car.physics.forward.x, -car.physics.forward.z), 0);
+  runUntil(sim, () => false, WEAPON.mineArmTicks + 5);
+  assert.ok(sim.combat.mines.some((m) => m.id === thrown.id), 'owner does not trigger its own thrown mine');
   sim.dispose();
 });
 

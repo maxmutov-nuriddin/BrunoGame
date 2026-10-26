@@ -26,11 +26,16 @@ export interface Mine {
   z: number;
   armTick: number;
   expireTick: number;
+  /** The owner cannot set it off before this tick (a mine thrown forward lies in their own path). */
+  ownerSafeTick: number;
 }
 
 const PROJECTILE_HEIGHT = 0.9;
 const MUZZLE_OFFSET = 3.2;
 const MINE_DROP_DISTANCE = 3.6;
+/** A mine thrown forward lands this far ahead of the car. */
+const MINE_THROW_DISTANCE = 26;
+const MINE_OWNER_GRACE_TICKS = 3 * 60;
 const CAR_CENTER_HEIGHT = 0.5;
 
 /** Weapons, defensive items and the damage they cause. All decisions happen here, server-side. */
@@ -44,7 +49,11 @@ export class Combat {
     this.sim = sim;
   }
 
-  useItem(car: RaceCar): void {
+  /**
+   * Use the held item. Aimed items follow the look-back button: pulse and missile fire forward, or backward
+   * while looking back; a mine is thrown ahead, or dropped behind while looking back.
+   */
+  useItem(car: RaceCar, backward = false): void {
     const { sim } = this;
     const kind = car.item;
     if (!kind || sim.tick < car.itemReadyTick || car.finished || sim.phase !== 'racing') return;
@@ -56,13 +65,13 @@ export class Combat {
     switch (kind) {
       case 'pulse':
       case 'missile':
-        this.launch(car, kind, id);
+        this.launch(car, kind, id, backward);
         break;
       case 'shock':
         this.shock(car, id);
         break;
       case 'mine':
-        this.dropMine(car, id);
+        this.placeMine(car, id, backward);
         break;
       case 'shield':
         car.shieldUntil = sim.tick + WEAPON.shieldTicks;
@@ -96,14 +105,16 @@ export class Combat {
     }
   }
 
-  private launch(car: RaceCar, kind: 'pulse' | 'missile', id: number): void {
+  private launch(car: RaceCar, kind: 'pulse' | 'missile', id: number, backward: boolean): void {
     const p = car.physics.body.translation();
     const f = car.physics.forward;
     const flat = Math.hypot(f.x, f.z) || 1;
-    const dx = f.x / flat;
-    const dz = f.z / flat;
+    const aim = backward ? -1 : 1;
+    const dx = (f.x / flat) * aim;
+    const dz = (f.z / flat) * aim;
     const speed = kind === 'pulse' ? WEAPON.pulseSpeed : WEAPON.missileSpeed;
-    const carSpeed = Math.max(0, car.physics.forwardSpeed);
+    // Forward shots inherit the car's speed; backward shots fly at their own speed over the ground.
+    const carSpeed = backward ? 0 : Math.max(0, car.physics.forwardSpeed);
     this.projectiles.push({
       id,
       kind,
@@ -114,20 +125,21 @@ export class Combat {
       vx: dx * (speed + carSpeed),
       vz: dz * (speed + carSpeed),
       expireTick: this.sim.tick + (kind === 'pulse' ? WEAPON.pulseLifetime : WEAPON.missileLifetime),
-      target: kind === 'missile' ? this.pickMissileTarget(car) : null,
+      target: kind === 'missile' ? this.pickMissileTarget(car, backward) : null,
       sampleHint: car.sampleHint
     });
   }
 
-  /** Closest rival ahead in race order, within range and roughly in front. */
-  private pickMissileTarget(owner: RaceCar): string | null {
+  /** Closest rival ahead in race order (behind, when fired backward), within range and roughly in the aim. */
+  private pickMissileTarget(owner: RaceCar, backward: boolean): string | null {
     const p = owner.physics.body.translation();
-    const f = owner.physics.forward;
+    const aim = backward ? -1 : 1;
+    const f = { x: owner.physics.forward.x * aim, z: owner.physics.forward.z * aim };
     let best: RaceCar | null = null;
     let bestGap = Infinity;
     for (const car of this.sim.cars) {
       if (car === owner || car.finished || car.isWrecked(this.sim.tick)) continue;
-      const gap = car.progress - owner.progress;
+      const gap = (car.progress - owner.progress) * aim;
       if (gap <= 0) continue;
       const q = car.physics.body.translation();
       const dx = q.x - p.x;
@@ -233,13 +245,14 @@ export class Combat {
     this.explode(id, 'shock', p.x, p.y, p.z);
   }
 
-  private dropMine(car: RaceCar, id: number): void {
+  private placeMine(car: RaceCar, id: number, behind: boolean): void {
     const own = this.mines.filter((mine) => mine.owner === car.id);
     if (own.length >= WEAPON.minesPerOwner) this.mines.splice(this.mines.indexOf(own[0]), 1);
     const p = car.physics.body.translation();
     const f = car.physics.forward;
-    const x = p.x - f.x * MINE_DROP_DISTANCE;
-    const z = p.z - f.z * MINE_DROP_DISTANCE;
+    const offset = behind ? -MINE_DROP_DISTANCE : MINE_THROW_DISTANCE;
+    const x = p.x + f.x * offset;
+    const z = p.z + f.z * offset;
     const location = this.sim.locator.locate(x, z, car.sampleHint);
     this.mines.push({
       id,
@@ -248,7 +261,8 @@ export class Combat {
       y: this.sim.track.samples[location.index].y + 0.25,
       z,
       armTick: this.sim.tick + WEAPON.mineArmTicks,
-      expireTick: this.sim.tick + WEAPON.mineLifetime
+      expireTick: this.sim.tick + WEAPON.mineLifetime,
+      ownerSafeTick: behind ? 0 : this.sim.tick + MINE_OWNER_GRACE_TICKS
     });
   }
 
@@ -263,6 +277,7 @@ export class Combat {
       if (sim.tick < mine.armTick) continue;
       const victim = sim.cars.find((car) => {
         if (car.finished || car.isWrecked(sim.tick)) return false;
+        if (car.id === mine.owner && sim.tick < mine.ownerSafeTick) return false;
         const q = car.physics.body.translation();
         return Math.hypot(q.x - mine.x, q.z - mine.z) < WEAPON.mineTriggerRadius && Math.abs(q.y - mine.y) < 2.5;
       });

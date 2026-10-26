@@ -6,7 +6,8 @@ import { qrSvg } from '../qr.js';
 
 /** A QR pointing at localhost only works on this computer; tell the host how to reach it from a phone. */
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-import { TRACK_PRESETS } from '../../../shared/track/presets.ts';
+import { TRACK_PRESETS, trackForSeed } from '../../../shared/track/presets.ts';
+import { LAYOUT_LABELS, THEME_LABELS, drawTrackPreview, trackFacts } from '../trackPreview.js';
 import { normalizeSeedCode } from '../../../shared/rng.ts';
 
 /** Private room: invite (code, QR, link), players, car choice, the host's race settings and ready state. */
@@ -37,6 +38,8 @@ export default class LobbyScreen {
           </div>
           <div class="panel">
             <h3>Race settings <small data-host-note></small></h3>
+            <canvas class="track-preview__map" data-preview></canvas>
+            <p class="track-badges" data-preview-info></p>
             <label class="field">Track
               <select data-track>${TRACK_PRESETS.map((t) => `<option value="${t.seed}">${escapeHtml(t.name)}</option>`).join('')}<option value="custom">Custom code…</option></select>
             </label>
@@ -142,6 +145,13 @@ export default class LobbyScreen {
 
     const s = room.settings;
     const preset = TRACK_PRESETS.find((t) => t.seed === s.trackSeed);
+    if (this.previewSeed !== s.trackSeed) {
+      // Everyone sees what the host picked, including custom codes.
+      this.previewSeed = s.trackSeed;
+      const track = trackForSeed(s.trackSeed);
+      drawTrackPreview($(this.el, '[data-preview]'), track);
+      $(this.el, '[data-preview-info]').innerHTML = `<em>${escapeHtml(LAYOUT_LABELS[track.layout])}</em><em>${escapeHtml(THEME_LABELS[track.theme])}</em><em>${escapeHtml(trackFacts(track))}</em>`;
+    }
     this.fields.track.value = preset ? preset.seed : 'custom';
     this.fields.customRow.hidden = Boolean(preset);
     if (!preset) this.fields.custom.value = s.trackSeed;

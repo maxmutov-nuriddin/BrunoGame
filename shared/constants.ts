@@ -1,7 +1,7 @@
 /** Bump whenever the wire format changes; client and server must match. */
 export const PROTOCOL_VERSION = 1;
 /** Bump whenever track generation output changes for the same seed. */
-export const GENERATOR_VERSION = 1;
+export const GENERATOR_VERSION = 2;
 
 export const TICK_RATE = 60;
 export const FIXED_DT = 1 / TICK_RATE;

@@ -6,9 +6,10 @@ import RaceProps from './fx/RaceProps.js';
 import Particles from './fx/Particles.js';
 import SkidMarks from './fx/SkidMarks.js';
 import ChaseCamera from './ChaseCamera.js';
+import { themeFor } from './themes.js';
+import Cockpit, { COCKPIT_LAYER } from './cockpit/Cockpit.js';
 
 const ACCENTS = ['#ff4f6d', '#4fd1ff', '#ffd23f', '#7cff6b', '#c18cff', '#ff9f43', '#3dffd0', '#ff6bd6'];
-const SKY = '#9fd6ff';
 const SHADOW_EXTENT = 45;
 const tmp = new THREE.Vector3();
 const side = new THREE.Vector3();
@@ -20,25 +21,28 @@ export const accentFor = (index) => ACCENTS[index % ACCENTS.length];
 /** Everything visible during a race; driven each frame by car frames from any session type. */
 export default class RaceView {
   constructor(resources, renderer, { track, participants, localId, quality, showTags }) {
+    const theme = themeFor(track);
+    this.theme = theme;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(SKY);
-    this.scene.fog = new THREE.Fog(SKY, 220, 900);
+    this.scene.background = new THREE.Color(theme.sky);
+    this.scene.fog = new THREE.Fog(theme.sky, ...theme.fog);
     this.chase = new ChaseCamera();
     this.camera = this.chase.camera;
+    this.camera.layers.enable(COCKPIT_LAYER);
     this.track = track;
     this.localId = localId;
     this.renderer = renderer;
 
-    this.hemisphere = new THREE.HemisphereLight('#fff3ca', '#4980a8', 1.6);
-    this.sun = new THREE.DirectionalLight('#fff8d2', 2.7);
+    this.hemisphere = new THREE.HemisphereLight(...theme.hemisphere);
+    this.sun = new THREE.DirectionalLight(...theme.sun);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(renderer.shadowMapSize, renderer.shadowMapSize);
     Object.assign(this.sun.shadow.camera, { near: 1, far: 140, left: -SHADOW_EXTENT, right: SHADOW_EXTENT, top: SHADOW_EXTENT, bottom: -SHADOW_EXTENT });
     this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.hemisphere, this.sun, this.sun.target);
 
-    this.trackView = new TrackView(track);
-    this.scenery = new RaceScenery(resources, track);
+    this.trackView = new TrackView(track, theme);
+    this.scenery = new RaceScenery(resources, track, theme);
     this.props = new RaceProps(track);
     this.smoke = new Particles(quality);
     this.glow = new Particles(quality, THREE.AdditiveBlending);
@@ -51,6 +55,13 @@ export default class RaceView {
       this.cars.set(p.id, view);
       this.scene.add(view.group);
     });
+    // The interior belongs to the local car: its style, and its bonnet in that car's paint.
+    const local = this.cars.get(localId);
+    if (local) {
+      const paint = local.materials.find((material) => material.name === 'Paint');
+      this.cockpit = new Cockpit(local.vehicle, paint ? paint.color : new THREE.Color('#888888'));
+      this.scene.add(this.cockpit.group);
+    }
   }
 
   update(dt, frames, world) {
@@ -132,6 +143,8 @@ export default class RaceView {
 
   dispose() {
     this.trackView.dispose();
+    this.scenery.dispose();
+    this.cockpit?.dispose();
     this.props.dispose();
     this.smoke.dispose();
     this.glow.dispose();

@@ -23,6 +23,16 @@ export default class Minimap {
       else this.path.lineTo(x, y);
     });
     this.path.closePath();
+    // Bridges are drawn last, on top, so an overpass reads as passing over the road below it.
+    this.bridgePaths = track.bridges.map(({ start, end }) => {
+      const path = new Path2D();
+      for (let i = start; i <= end; i++) {
+        const [x, y] = this.toMap(track.samples[i].x, track.samples[i].z);
+        if (i === start) path.moveTo(x, y);
+        else path.lineTo(x, y);
+      }
+      return path;
+    });
     this.start = this.toMap(track.samples[0].x, track.samples[0].z);
   }
 
@@ -36,6 +46,14 @@ export default class Minimap {
     c.strokeStyle = 'rgba(255,255,255,0.85)';
     c.lineWidth = 4;
     c.stroke(this.path);
+    for (const bridge of this.bridgePaths) {
+      c.strokeStyle = 'rgba(8,10,16,0.9)';
+      c.lineWidth = 9;
+      c.stroke(bridge);
+      c.strokeStyle = '#7fe8ff';
+      c.lineWidth = 4;
+      c.stroke(bridge);
+    }
     c.fillStyle = '#ffffff';
     c.fillRect(this.start[0] - 3, this.start[1] - 3, 6, 6);
     let local = null;

@@ -48,11 +48,18 @@ race, results, then *Race again* / *Rematch*.
 | Use item | E | X | ITEM |
 | Look back | Q | LB | — |
 | Reset to last checkpoint | R (3 s cooldown) | Y | RESET |
-| Change camera (chase → far → 1st person) | C | — | CAM |
+| Change camera (chase → far → hood → cockpit) | C | — | CAM |
 | Menu | Esc | Start | II |
 
 During the track intro, E, Enter or Space skips it. The camera choice is saved and also selectable in
-Settings; the 1st-person (hood) view hides your own car body.
+Settings. Hood and cockpit are first-person: the car body is hidden. Every car has its own cockpit
+(`src/race/cockpit/styles.js`): eye height (van and pickup sit high, Nova low), bonnet in the car's paint,
+dashboard colours, steering wheel type (round, flat-bottom, rally dish, wood-rim retro, EV yoke, bus) and
+instrument cluster (twin dials, big dial + screen, digital display, three rally dials, EV tablet, retro
+cream dials with a centre trio; Hornet RS adds a boost gauge on the pillar). The speedometer, rev counter
+(a gearbox imitation) and nitro gauges are live, and the wheel turns the same way you steer. Both show a rear-view mirror at the top of
+the screen (a rear camera rendered every second frame into a small texture, drawn mirrored); it can be
+turned off in Settings. Q (look back) still works in every mode.
 Solo `Esc` pauses the simulation; online `Esc` only opens a local menu — the race keeps running.
 
 ### Racing mechanics
@@ -65,6 +72,9 @@ Solo `Esc` pauses the simulation; online `Esc` only opens a local menu — the r
   Drifting refills nitro (14/s, capped at 35 per drift) **only while moving forward along the track**,
   so circling on the spot earns nothing.
 * **Nitro:** Shift, capacity 100, per-car burn rate, needs 8 to start, stops when empty.
+* **Aiming:** E fires forward; holding Q (look back) while pressing E fires backward. Pulse Shot and Arc
+  Missile fly the chosen way (a backward missile homes on the nearest rival behind); a Road Mine is thrown
+  26 m ahead (its owner is immune to it for 3 s) or, with Q, dropped behind. Bots aim the same way.
 * **Items** (one held at a time, boxes respawn after 6 s, rolls favour cars further back):
   Pulse Shot (straight bolt), Arc Missile (homes on the nearest rival ahead, limited turn rate, cannot pass
   walls), Shock Ring (10 m blast), Road Mine (dropped behind, arms after 0.7 s), Shield (6 s or 60 damage;
@@ -115,14 +125,26 @@ src/           browser client
   core/ ui/ audio/ net/ scenes/
 ```
 
-**Tracks** come from one `TrackDefinition` (`shared/track/generator.ts`, `GENERATOR_VERSION = 1`):
-a closed spline with a guaranteed hairpin, elevation, a jump crest with a straight landing, 18 m road,
+**Tracks** come from one `TrackDefinition` (`shared/track/generator.ts` + `layouts.ts`,
+`GENERATOR_VERSION = 2`), 2.1–3.2 km long in a ±440 m world. Every seed picks a **layout** and a **theme**:
+
+| Layout | What it is |
+| --- | --- |
+| `loop` | 12–17 control points with 2–3 hairpins |
+| `figure8` | crosses itself once on an overpass: the deck clears the road below by 8.5 m (validated ≥ 6.5 m), 150 m ramps, pillars kept off the lower road |
+| `island` | islets in the sea joined by two bridges over open water |
+
+Themes (visual only): meadow, desert, snow, dusk city, island. Eight named tracks fix both (Sunset Loop,
+Neon Overpass, Coral Isles, Dune Sprint, Frost Bite, Canyon Cross, Lagoon Run, Alpine Knot); any other code
+gets its own, so new codes keep giving new circuits. Each track has elevation, a jump crest with a straight landing, 18 m road,
 checkpoints every ~70 m, 8 grid slots on a flat straight, 4 rows of item boxes and a braking-aware racing
 line. Road and barrier colliders, the visual mesh, bot paths and checkpoints are all built from it.
 `validateTrack` checks continuity, minimum radius, self-clearance, world bounds, grades, landing straight,
 grid, checkpoint order, pickups and the racing line; failing seeds retry deterministically
-(`seed|attempt`) and finally fall back to a hand-placed circuit. Same seed + generator version → same
-track (tested by fingerprint). Online, the server sends the full definition so clients can never disagree.
+(`seed|attempt`, up to 60 tries; none of 120 random seeds needed the fallback) and finally fall back to a
+hand-placed circuit. On an overpass, checkpoints and item boxes stay off the crossing, the car locator
+weighs height so a car below is never placed on the deck, and barriers under a deck stop 1.4 m below the
+road so the road beneath is open. Same seed + generator version → same track (tested by fingerprint). Online, the server sends the full definition so clients can never disagree.
 
 **Multiplayer** is server-authoritative. Clients send only inputs (`[seq, tick, throttle, steer, buttons]`,
 30 Hz batches); the server runs physics at 60 Hz and sends 20 Hz snapshots with the last applied input
@@ -222,7 +244,7 @@ run online races.
 
 Run on an Apple M2 laptop, Chrome, Node 24 (2026‑10‑24):
 
-* `npm test`: type-check clean, 29/29 tests (9 vehicle, 13 race, 7 multiplayer).
+* `npm test`: type-check clean, 32/32 tests (9 vehicle, 16 race, 7 multiplayer).
 * Browser, solo: loading → menu → setup → intro → countdown → race → results → *Race again*, 6 cars,
   60 fps (display-capped) in a race; GPU geometry/texture counts stable across 4 race→menu cycles; JS heap
   returns to ~60 MB after GC.
@@ -233,8 +255,8 @@ Run on an Apple M2 laptop, Chrome, Node 24 (2026‑10‑24):
   releases inputs.
 * Production build offline: server stopped + network offline → app loads from the service worker, solo race
   runs, Friends screen shows the server message.
-* Server (`npm run bench`, 8 hard bots, items on): 0.44 ms per 60 Hz tick average, 0.8 ms p99; snapshots
-  ~1.2 KB (≈24 KB/s per client); race setup ~199 KB once, compressed on the wire.
+* Server (`npm run bench`, 8 hard bots, items on): 0.24 ms per 60 Hz tick average, 0.49 ms p99 (2026‑10‑26,
+  longer v2 tracks); snapshots ~1.2 KB (≈24 KB/s per client); race setup ~366 KB once, compressed on the wire.
 
 **Not verified:** real phones/tablets (only Chrome device emulation), Safari/Firefox, the Docker image
 (Docker was not installed on the test machine), deployment behind a real TLS proxy, and long sessions with
@@ -245,7 +267,8 @@ real network loss beyond the automated reconnect test. Treat performance on othe
 * Online prediction covers your own car; rivals are extrapolated, so at high latency a rival that
   brakes or turns hard can show a small correction.
 * Bots overtake and avoid traffic but are not perfect in every pile-up; stuck bots reverse, then reset.
-* Only procedurally generated circuits (five named presets plus any code); no hand-modelled tracks.
+* Only procedurally generated circuits (eight named tracks plus any code); no hand-modelled tracks. The
+  rear-view mirror adds a second scene render (every other frame) in hood and cockpit views.
 * Engine sounds are synthesised, not recorded.
 * `npm audit` was clean on 2026‑10‑24 (after `npm audit fix` moved Vite to 6.4.5). Do not expose the Vite dev server (`npm run dev`, `host: true`) on untrusted networks; use a production build.
 

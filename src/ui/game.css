@@ -125,8 +125,19 @@ button, input, select, textarea { font: inherit; }
 .garage__detail b { color: var(--text); }
 
 .solo__grid, .lobby__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; max-width: 920px; }
-.track-list { display: grid; gap: 8px; margin-bottom: 14px; }
-.track-item { text-align: left; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.25); color: var(--text); cursor: pointer; display: grid; gap: 2px; }
+.solo__grid { max-width: 1180px; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); }
+@media (max-width: 860px) { .solo__grid { grid-template-columns: 1fr; } }
+.track-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 168px), 1fr)); gap: 10px; margin-bottom: 14px; max-height: 46vh; overflow-y: auto; padding-right: 4px; }
+.track-item { text-align: left; padding: 8px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.25); color: var(--text); cursor: pointer; display: grid; gap: 3px; align-content: start; }
+.track-item__map { width: 100%; aspect-ratio: 16 / 10; border-radius: 7px; background: rgba(0, 0, 0, 0.3); }
+.track-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.track-badges em { font-style: normal; font-size: 0.7rem; padding: 2px 7px; border-radius: 99px; background: rgba(255, 255, 255, 0.08); color: var(--cyan); }
+.track-preview { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; align-items: center; margin-bottom: 12px; }
+.track-preview__map { width: 100%; aspect-ratio: 16 / 10; border-radius: 10px; border: 1px solid var(--line); }
+.track-preview__info { display: grid; gap: 6px; }
+.track-preview__info b { font: italic 800 1.3rem var(--display); text-transform: uppercase; }
+.track-preview__info small { color: var(--muted); }
+@media (max-width: 560px) { .track-preview { grid-template-columns: 1fr; } }
 .track-item small { color: var(--muted); }
 .track-item.is-selected { border-color: var(--cyan); box-shadow: inset 3px 0 0 var(--cyan); }
 .solo__car { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--line); margin-top: 12px; }
@@ -291,3 +302,9 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; padding: 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Rear-view mirror frame; the image itself is drawn by the renderer underneath. */
+.rear-mirror { box-sizing: border-box; position: fixed; z-index: 3; pointer-events: none; border: 4px solid #111318; border-radius: 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+
+.lobby [data-preview] { margin-bottom: 8px; }
+.lobby [data-preview-info] { margin: 0 0 12px; }

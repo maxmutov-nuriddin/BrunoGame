@@ -13,11 +13,14 @@ const WALL_MARGIN = 0.4;
 const SHAKE_DECAY = 6;
 /** Far camera: same rig, pulled back and up. */
 const FAR_SCALE = { distance: 1.55, height: 1.7 };
-/** Hood (first-person) camera: just above the bonnet, looking down the road. */
-const HOOD_OFFSET = new THREE.Vector3(0, 0.95, -0.55);
-const HOOD_LOOK = new THREE.Vector3(0, 0.75, -30);
-const HOOD_FOV = 74;
-const HOOD_ROTATION_SMOOTHING = 18;
+/** First-person mounts in car space: hood (above the bonnet) and cockpit (driver's eyes, left seat). */
+const MOUNTS = {
+  hood: { offset: new THREE.Vector3(0, 0.95, -0.55), look: new THREE.Vector3(0, 0.75, -30), fov: 74 },
+  cockpit: { offset: new THREE.Vector3(-0.33, 0.72, 0.1), look: new THREE.Vector3(-0.33, 0.55, -30), fov: 72 }
+};
+const MOUNT_ROTATION_SMOOTHING = 18;
+/** Rear-view mirror camera: roof height above the windscreen, looking back down the road. */
+const MIRROR = { offset: new THREE.Vector3(0, 1.05, 0.0), look: new THREE.Vector3(0, 0.8, 40), fov: 42 };
 
 const tmp = new THREE.Vector3();
 const flatForward = new THREE.Vector3();
@@ -27,6 +30,7 @@ export default class ChaseCamera {
   constructor() {
     this.camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.3, 1400);
     this.position = new THREE.Vector3(0, 8, 12);
+    this.mirror = new THREE.PerspectiveCamera(MIRROR.fov, 3.5, 0.5, 700);
     this.lookAt = new THREE.Vector3();
     this.shake = 0;
     this.fov = BASE_FOV;
@@ -46,8 +50,9 @@ export default class ChaseCamera {
    * @param frame car frame (position, quaternion, speed, flags)
    * @param raycast optional (from, to) => distance|null against static world, for wall avoidance
    */
-  update(dt, frame, { maxSpeed, lookBack = false, raycast = null, mode = 'chase' }) {
-    if (mode === 'hood') return this.updateHood(dt, frame, maxSpeed, lookBack);
+  /** `mount` overrides the built-in first-person mount (each car's cockpit has its own eye point). */
+  update(dt, frame, { maxSpeed, lookBack = false, raycast = null, mode = 'chase', mount = undefined }) {
+    if (MOUNTS[mode]) return this.updateMounted(dt, frame, maxSpeed, lookBack, mount ?? MOUNTS[mode]);
     flatForward.set(0, 0, -1).applyQuaternion(frame.quaternion).setY(0);
     if (flatForward.lengthSq() < 1e-4) flatForward.set(0, 0, -1);
     flatForward.normalize();
@@ -98,11 +103,19 @@ export default class ChaseCamera {
     this.camera.lookAt(this.lookAt);
   }
 
-  /** First-person view from the bonnet: rigidly attached, rotation lightly smoothed against jitter. */
-  updateHood(dt, frame, maxSpeed, lookBack) {
+  /** First-person view (hood or cockpit): rigidly attached, rotation lightly smoothed against jitter. */
+  /** Point the rear-view mirror camera backwards from the car's roof. */
+  updateMirror(frame) {
+    this.mirror.position.copy(MIRROR.offset).applyQuaternion(frame.quaternion).add(frame.position);
+    const target = MIRROR.look.clone().applyQuaternion(frame.quaternion).add(frame.position);
+    this.mirror.up.set(0, 1, 0);
+    this.mirror.lookAt(target);
+  }
+
+  updateMounted(dt, frame, maxSpeed, lookBack, mount) {
     const speedRatio = Math.min(1, frame.speed / maxSpeed);
-    this.camera.position.copy(HOOD_OFFSET).applyQuaternion(frame.quaternion).add(frame.position);
-    const look = HOOD_LOOK.clone();
+    this.camera.position.copy(mount.offset).applyQuaternion(frame.quaternion).add(frame.position);
+    const look = mount.look.clone();
     if (lookBack) look.z = -look.z;
     const target = look.applyQuaternion(frame.quaternion).add(frame.position);
     this.hoodQuaternion ??= new THREE.Quaternion();
@@ -111,10 +124,10 @@ export default class ChaseCamera {
       this.hoodQuaternion.copy(desired);
       this.snapNext = false;
     } else {
-      this.hoodQuaternion.slerp(desired, 1 - Math.exp(-dt * HOOD_ROTATION_SMOOTHING));
+      this.hoodQuaternion.slerp(desired, 1 - Math.exp(-dt * MOUNT_ROTATION_SMOOTHING));
     }
     this.camera.quaternion.copy(this.hoodQuaternion);
-    const targetFov = HOOD_FOV + (this.reducedMotion ? 4 : 12) * speedRatio + (frame.flags.nitro && !this.reducedMotion ? 6 : 0);
+    const targetFov = mount.fov + (this.reducedMotion ? 4 : 12) * speedRatio + (frame.flags.nitro && !this.reducedMotion ? 6 : 0);
     this.fov += (targetFov - this.fov) * (1 - Math.exp(-dt * FOV_SMOOTHING));
     this.camera.fov = this.fov;
     this.camera.updateProjectionMatrix();

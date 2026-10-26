@@ -2,16 +2,17 @@ import { GENERATOR_VERSION } from '../constants.ts';
 import { createRng, type Rng } from '../rng.ts';
 import { buildRacingLine } from './racingLine.ts';
 import { closedCatmullRom, curvatures, resampleClosed, signedArea, smoothClosed, type Point2 } from './spline.ts';
-import type { Checkpoint, GridSlot, PickupSpot, TrackDefinition, TrackSample } from './types.ts';
+import type { Checkpoint, GridSlot, PickupSpot, TrackCrossing, TrackDefinition, TrackLayout, TrackSample, TrackTheme } from './types.ts';
+import { bridgeRanges, buildOverpass, buildWaterBridges, figure8Points, findCrossing, loopPoints, pickLayout, pickTheme } from './layouts.ts';
 import { validateTrack, type TrackIssue } from './validate.ts';
 
 export const TRACK_WIDTH = 18;
 export const SAMPLE_SPACING = 2;
 export const BARRIER_HEIGHT = 1.4;
-export const WORLD_LIMIT = 290;
+export const WORLD_LIMIT = 440;
 export const MIN_RADIUS = 16;
 export const START_STRAIGHT = 90;
-const MAX_ATTEMPTS = 24;
+const MAX_ATTEMPTS = 60;
 const MAX_SMOOTH_PASSES = 60;
 const CHECKPOINT_SPACING = 70;
 const GRID_SLOTS = 8;
@@ -22,18 +23,31 @@ const RAMP_RISE = 1.9;
 const RAMP_UP_LENGTH = 24;
 const RAMP_DOWN_LENGTH = 44;
 const MIN_ROAD_HEIGHT = 0.12;
+/** Checkpoints and item boxes stay this many samples away from an overpass crossing. */
+const CROSSING_KEEP_OUT = 30;
+
+export interface TrackOptions {
+  layout?: TrackLayout;
+  theme?: TrackTheme;
+}
 
 export interface GeneratedTrack {
   track: TrackDefinition;
   attempts: { attempt: number; issues: TrackIssue[] }[];
 }
 
-/** Deterministic: same seed + GENERATOR_VERSION always yields the same definition. */
-export function generateTrack(seed: string, name = `Circuit ${seed}`): GeneratedTrack {
+/**
+ * Deterministic: same seed + options + GENERATOR_VERSION always yields the same definition. Layout and theme
+ * come from the seed unless given, and stay the same across retries.
+ */
+export function generateTrack(seed: string, name = `Circuit ${seed}`, options: TrackOptions = {}): GeneratedTrack {
   const attempts: GeneratedTrack['attempts'] = [];
+  const styleRng = createRng(`${seed}|style|v${GENERATOR_VERSION}`);
+  const layout = options.layout ?? pickLayout(styleRng);
+  const theme = options.theme ?? pickTheme(styleRng, layout);
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const rng = createRng(`${seed}|track|v${GENERATOR_VERSION}|${attempt}`);
-    const candidate = buildCandidate(rng, seed, name, attempt);
+    const candidate = buildCandidate(rng, { seed, name, attempt, layout, theme });
     if (!candidate) {
       attempts.push({ attempt, issues: [{ code: 'shape', message: 'no straight long enough for the grid' }] });
       continue;
@@ -45,21 +59,16 @@ export function generateTrack(seed: string, name = `Circuit ${seed}`): Generated
   return { track: buildFallbackTrack(seed, name), attempts };
 }
 
-function controlPoints(rng: Rng): Point2[] {
-  const count = rng.int(9, 13);
-  const step = (Math.PI * 2) / count;
-  const hairpin = rng.int(0, count - 1);
-  const points: Point2[] = [];
-  for (let i = 0; i < count; i++) {
-    const angle = i * step + rng.range(-0.22, 0.22) * step;
-    const radius = i === hairpin ? rng.range(70, 105) : rng.range(165, 250);
-    points.push({ x: Math.sin(angle) * radius, z: Math.cos(angle) * radius });
-  }
-  return points;
+interface CandidateOptions {
+  seed: string;
+  name: string;
+  attempt: number;
+  layout: TrackLayout;
+  theme: TrackTheme;
 }
 
-function buildCandidate(rng: Rng, seed: string, name: string, attempt: number): TrackDefinition | null {
-  let points = closedCatmullRom(controlPoints(rng), 24);
+function buildCandidate(rng: Rng, options: CandidateOptions): TrackDefinition | null {
+  let points = closedCatmullRom(options.layout === 'figure8' ? figure8Points(rng) : loopPoints(rng), 24);
   if (rng.chance(0.5)) points = points.reverse();
   points = resampleClosed(points, SAMPLE_SPACING);
 
@@ -69,29 +78,54 @@ function buildCandidate(rng: Rng, seed: string, name: string, attempt: number): 
     passes += 4;
   }
 
-  const start = findStartStraight(points);
+  // A figure 8's start straight must keep clear of its crossing (the gantry cannot stand under a bridge).
+  let avoid: number[] = [];
+  if (options.layout === 'figure8') {
+    const before = buildFlatSamples(points);
+    const meetingBefore = findCrossing(before, TRACK_WIDTH, before[before.length - 1].s + SAMPLE_SPACING);
+    if (!meetingBefore) return null;
+    avoid = [meetingBefore.a, meetingBefore.b];
+  }
+  const start = findStartStraight(points, avoid, Math.round((START_STRAIGHT + 60) / SAMPLE_SPACING));
   if (start < 0) return null;
   // Start line sits at the beginning of the straight so the grid fits after it.
   points = [...points.slice(start), ...points.slice(0, start)];
 
   const flat = buildFlatSamples(points);
-  const ramp = placeRamp(flat, rng);
+  const startGuard = Math.round((START_STRAIGHT + 40) / SAMPLE_SPACING);
+  const length = flat[flat.length - 1].s + SAMPLE_SPACING;
+  const meeting = options.layout === 'figure8' ? findCrossing(flat, TRACK_WIDTH, length) : null;
+  if (options.layout === 'figure8' && !meeting) return null;
+  const keepOut = meeting ? [meeting.a, meeting.b].map((c) => [c - 90, c + 90] as [number, number]) : [];
+  const ramp = placeRamp(flat, rng, keepOut);
   applyElevation(flat, rng, ramp);
-  return assemble(flat, { seed, name, attempt, source: 'generated', ramp });
+
+  let crossing: TrackCrossing | null = null;
+  if (meeting) {
+    crossing = buildOverpass(flat, meeting, startGuard, SAMPLE_SPACING);
+    if (!crossing) return null;
+  }
+  if (options.layout === 'island' && !buildWaterBridges(flat, rng, startGuard, SAMPLE_SPACING)) return null;
+  if (ramp && flat.slice(ramp.start - 30, ramp.end + 30).some((s) => s.bridge)) return null;
+  return assemble(flat, { ...options, source: 'generated', ramp, crossing });
 }
 
 function minRadius(points: readonly Point2[]): number {
   return curvatures(points).reduce((min, k) => Math.min(min, Math.abs(k) > 1e-9 ? 1 / Math.abs(k) : Infinity), Infinity);
 }
 
-/** Index of the window with the gentlest curvature long enough for the grid; -1 if none qualifies. */
-function findStartStraight(points: readonly Point2[]): number {
+/**
+ * Index of the window with the gentlest curvature long enough for the grid; -1 if none qualifies.
+ * Windows within `guard` samples of any `avoid` index are skipped.
+ */
+function findStartStraight(points: readonly Point2[], avoid: readonly number[] = [], guard = 0): number {
   const k = curvatures(points);
   const n = points.length;
   const window = Math.round(START_STRAIGHT / SAMPLE_SPACING);
   let best = -1;
   let bestScore = Infinity;
   for (let i = 0; i < n; i++) {
+    if (avoid.some((c) => (c - i + guard + n) % n < window + 2 * guard)) continue;
     let worst = 0;
     for (let j = 0; j < window; j++) worst = Math.max(worst, Math.abs(k[(i + j) % n]));
     if (worst < bestScore) {
@@ -119,8 +153,8 @@ function buildFlatSamples(points: readonly Point2[]): TrackSample[] {
   });
 }
 
-/** Put the jump crest on a long gentle stretch away from the start straight. */
-function placeRamp(samples: TrackSample[], rng: Rng): { start: number; end: number } | null {
+/** Put the jump crest on a long gentle stretch away from the start straight and any `avoid` range. */
+function placeRamp(samples: TrackSample[], rng: Rng, avoid: [number, number][] = []): { start: number; end: number } | null {
   const n = samples.length;
   const upCount = Math.round(RAMP_UP_LENGTH / SAMPLE_SPACING);
   const downCount = Math.round(RAMP_DOWN_LENGTH / SAMPLE_SPACING);
@@ -131,6 +165,7 @@ function placeRamp(samples: TrackSample[], rng: Rng): { start: number; end: numb
   for (let i = startGuard; i < n - need - 10; i++) {
     let ok = true;
     for (let j = 0; j < need && ok; j++) ok = Math.abs(samples[i + j].curvature) < 1 / 160;
+    if (ok && avoid.some(([a, b]) => i < b && i + need > a)) ok = false;
     if (ok) candidates.push(i);
   }
   if (candidates.length === 0) return null;
@@ -143,8 +178,8 @@ function applyElevation(samples: TrackSample[], rng: Rng, ramp: { start: number;
   const length = samples[n - 1].s + SAMPLE_SPACING;
   const k1 = rng.int(1, 2);
   const k2 = rng.int(3, 4);
-  const a1 = rng.range(1.2, 3);
-  const a2 = rng.range(0.4, 1.2);
+  const a1 = rng.range(1.5, 4.5);
+  const a2 = rng.range(0.5, 1.5);
   const p1 = rng.angle();
   const p2 = rng.angle();
 
@@ -182,16 +217,23 @@ interface AssembleOptions {
   attempt: number;
   source: TrackDefinition['source'];
   ramp: { start: number; end: number } | null;
+  layout: TrackLayout;
+  theme: TrackTheme;
+  crossing: TrackCrossing | null;
 }
+
+/** True when sample i is within CROSSING_KEEP_OUT of either branch of the overpass crossing. */
+const nearCrossing = (crossing: TrackCrossing | null, i: number, n: number) =>
+  crossing !== null && [crossing.upper, crossing.lower].some((c) => Math.min(Math.abs(i - c), n - Math.abs(i - c)) < CROSSING_KEEP_OUT);
 
 function assemble(samples: TrackSample[], options: AssembleOptions): TrackDefinition {
   const n = samples.length;
   const length = samples[n - 1].s + SAMPLE_SPACING;
   const checkpointCount = Math.max(8, Math.round(length / CHECKPOINT_SPACING));
-  const checkpoints: Checkpoint[] = Array.from({ length: checkpointCount }, (_, index) => ({
-    index,
-    sample: Math.round((index * n) / checkpointCount) % n
-  }));
+  // A gate under (or on) the overpass could be crossed from the other level, so none sits there.
+  const checkpoints: Checkpoint[] = Array.from({ length: checkpointCount }, (_, index) => Math.round((index * n) / checkpointCount) % n)
+    .filter((sample, index) => index === 0 || !nearCrossing(options.crossing, sample, n))
+    .map((sample, index) => ({ index, sample }));
 
   const track: TrackDefinition = {
     id: `${options.seed}@${GENERATOR_VERSION}`,
@@ -210,7 +252,11 @@ function assemble(samples: TrackSample[], options: AssembleOptions): TrackDefini
     racingLine: [],
     ramp: options.ramp,
     hairpins: findHairpins(samples),
-    barrierHeight: BARRIER_HEIGHT
+    barrierHeight: BARRIER_HEIGHT,
+    layout: options.layout,
+    theme: options.theme,
+    crossing: options.crossing,
+    bridges: bridgeRanges(samples)
   };
   track.pickups = placePickups(track);
   track.racingLine = buildRacingLine(track);
@@ -258,7 +304,7 @@ function placePickups(track: TrackDefinition): PickupSpot[] {
     for (let tries = 0; tries < 40; tries++) {
       const inRamp = ramp !== null && index > ramp.start - 15 && index < ramp.end + 15;
       const tight = Math.abs(samples[index % n].curvature) > 1 / 45;
-      if (!inRamp && !tight) break;
+      if (!inRamp && !tight && !nearCrossing(track.crossing, index % n, n)) break;
       index = (index + 3) % n;
     }
     const s = samples[index % n];
@@ -286,5 +332,5 @@ export function buildFallbackTrack(seed: string, name: string): TrackDefinition 
   const flat = buildFlatSamples(points);
   const ramp = placeRamp(flat, createRng('fallback-ramp'));
   applyElevation(flat, createRng(`fallback|${GENERATOR_VERSION}`), ramp);
-  return assemble(flat, { seed, name, attempt: -1, source: 'fallback', ramp });
+  return assemble(flat, { seed, name, attempt: -1, source: 'fallback', ramp, layout: 'loop', theme: 'meadow', crossing: null });
 }

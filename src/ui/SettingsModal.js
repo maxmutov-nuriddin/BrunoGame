@@ -10,7 +10,7 @@ const ACTION_LABELS = {
 };
 
 const FPS_OPTIONS = [[30, '30 fps (cool)'], [60, '60 fps'], [0, 'Unlimited']];
-const CAMERA_LABELS = { chase: 'Chase', far: 'Far', hood: '1st person' };
+const CAMERA_LABELS = { chase: 'Chase', far: 'Far', hood: 'Hood', cockpit: 'Cockpit' };
 
 /** Graphics, audio, controls (with remapping) and the multiplayer server address. */
 export default class SettingsModal {
@@ -29,6 +29,7 @@ export default class SettingsModal {
               <div class="segmented">${FPS_OPTIONS.map(([fps, label]) => `<button data-act="fps" data-fps="${fps}">${label}</button>`).join('')}</div>
               <h3>Camera <span class="muted">(C in race)</span></h3>
               <div class="segmented">${CAMERA_MODES.map((mode) => `<button data-act="camera" data-mode="${mode}">${CAMERA_LABELS[mode]}</button>`).join('')}</div>
+              <label class="toggle"><input type="checkbox" data-mirror /> Rear-view mirror in hood and cockpit views</label>
               <label class="toggle"><input type="checkbox" data-reduced /> Reduced motion (no shake, speed blur or FOV kick)</label>
               <h3>Audio</h3>
               ${['master', 'music', 'sfx'].map((k) => `<label class="field">${k === 'sfx' ? 'Effects' : k[0].toUpperCase() + k.slice(1)} <input type="range" min="0" max="1" step="0.05" data-volume="${k}" /></label>`).join('')}
@@ -44,6 +45,9 @@ export default class SettingsModal {
           </div>
         </div>
       </div>`);
+    const mirror = $(this.el, '[data-mirror]');
+    mirror.checked = s.get('rearMirror');
+    mirror.addEventListener('change', () => s.set('rearMirror', mirror.checked));
     const reduced = $(this.el, '[data-reduced]');
     reduced.checked = s.get('reducedMotion');
     reduced.addEventListener('change', () => {

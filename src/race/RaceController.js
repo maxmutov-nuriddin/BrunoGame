@@ -9,7 +9,11 @@ import { escapeHtml, ordinal } from '../ui/format.js';
 import { keyLabel } from '../ui/icons.js';
 import { CAMERA_MODES } from '../core/Settings.js';
 
-const CAMERA_NAMES = { chase: 'Chase camera', far: 'Far camera', hood: 'Hood camera (1st person)' };
+const CAMERA_NAMES = { chase: 'Chase camera', far: 'Far camera', hood: 'Hood camera', cockpit: 'Cockpit camera' };
+/** First-person modes hide the car body and show the rear-view mirror. */
+const FIRST_PERSON = new Set(['hood', 'cockpit']);
+/** Mirror size: share of the screen width, clamped in CSS px, and its aspect ratio. */
+const MIRROR = { share: 0.28, min: 200, max: 460, aspect: 3.6, top: 12 };
 
 const RESULTS_DELAY_MS = 2600;
 const STALE_SNAPSHOT_SECONDS = 1.2;
@@ -182,13 +186,37 @@ export default class RaceController {
     }
     if (!me) return;
     const mode = this.game.settings.get('cameraMode');
-    this.view.setLocalCarVisible(mode !== 'hood');
+    this.view.setLocalCarVisible(!FIRST_PERSON.has(mode));
+    this.view.cockpit?.update(me, mode === 'cockpit', dt);
+    this.updateMirror(me, FIRST_PERSON.has(mode) && this.game.settings.get('rearMirror'));
     this.view.chase.update(dt, me, {
       mode,
+      mount: mode === 'cockpit' ? this.view.cockpit?.mount : undefined,
       maxSpeed: me.maxSpeed,
       lookBack: this.game.input.isDown('lookBack'),
       raycast: (origin, direction, distance) => this.session.raycast(origin, direction, distance)
     });
+  }
+
+  /** Rear-view mirror at the top centre; the frame is a DOM element over the rendered image. */
+  updateMirror(me, visible) {
+    const { renderer } = this.game;
+    if (!visible) {
+      renderer.setMirror(null);
+      if (this.mirrorFrame) this.mirrorFrame.hidden = true;
+      return;
+    }
+    const width = Math.round(Math.min(MIRROR.max, Math.max(MIRROR.min, window.innerWidth * MIRROR.share)));
+    const rect = { x: Math.round((window.innerWidth - width) / 2), y: MIRROR.top, width, height: Math.round(width / MIRROR.aspect) };
+    this.view.chase.updateMirror(me);
+    renderer.setMirror({ scene: this.view.scene, camera: this.view.chase.mirror, rect });
+    if (!this.mirrorFrame) {
+      this.mirrorFrame = document.createElement('div');
+      this.mirrorFrame.className = 'rear-mirror';
+      this.game.layout.appendChild(this.mirrorFrame);
+    }
+    this.mirrorFrame.hidden = false;
+    Object.assign(this.mirrorFrame.style, { left: `${rect.x - 4}px`, top: `${rect.y - 4}px`, width: `${rect.width + 8}px`, height: `${rect.height + 8}px` });
   }
 
   countdownSounds() {
@@ -339,6 +367,8 @@ export default class RaceController {
 
   exit() {
     window.removeEventListener('keydown', this.onIntroKey);
+    this.game.renderer.setMirror(null);
+    this.mirrorFrame?.remove();
     this.game.renderer.setSpeedEffect(0);
     this.game.renderer.setDepthOfField(null);
     this.game.audio.silenceDriving();

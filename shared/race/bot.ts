@@ -60,6 +60,8 @@ export class BotDriver {
   private wrongWayTicks = 0;
   private nitroUntil = 0;
   private fireNextTick = false;
+  /** Aim of the queued item use: true sends it backward (look-back held). */
+  private fireBackward = false;
   private itemHeldSince = -1;
   private wantsReset = false;
   private readonly noisePhase: number;
@@ -97,7 +99,8 @@ export class BotDriver {
     const input = this.drive(this.profile.speedFactor * (1 + this.brakeBias), this.laneOffset);
     const useItem = this.fireNextTick && !car.prevInput.useItem;
     if (useItem) this.fireNextTick = false;
-    return { ...input, useItem };
+    // Bots aim like players: holding look-back while using an item sends it backward.
+    return { ...input, useItem, lookBack: useItem && this.fireBackward };
   }
 
   /**
@@ -150,7 +153,7 @@ export class BotDriver {
     const { car, sim } = this;
     if (car.sampleHint >= 0) return car.sampleHint;
     const p = car.physics.body.translation();
-    return sim.locator.locate(p.x, p.z).index;
+    return sim.locator.locate(p.x, p.z, -1, p.y).index;
   }
 
   /** Adaptive cruise: never drive into the back of a car in the same lane. */
@@ -283,18 +286,23 @@ export class BotDriver {
     const skilled = rng.chance(this.profile.itemSkill);
     const heldTooLong = sim.tick - this.itemHeldSince > 60 * (skilled ? 14 : 5);
     let use = false;
+    this.fireBackward = false;
     switch (kind) {
       case 'pulse':
         use = this.rivalInFront(70, 0.12);
+        if (!use && this.rivalBehind(40)) use = this.fireBackward = true;
         break;
       case 'missile':
         use = this.rivalAhead(WEAPON.missileRange * 0.9);
+        if (!use && this.rivalBehind(WEAPON.missileRange * 0.6)) use = this.fireBackward = true;
         break;
       case 'shock':
         use = this.rivalWithin(WEAPON.shockRadius * 0.8);
         break;
       case 'mine':
-        use = this.rivalBehind(35);
+        // Dropped behind for a chaser (look-back), otherwise thrown onto the road ahead of a leader.
+        use = this.fireBackward = this.rivalBehind(35);
+        if (!use) use = this.rivalInFront(45, 0.12);
         break;
       case 'shield':
         use = this.threatened() || (!skilled && car.rank === 1);
