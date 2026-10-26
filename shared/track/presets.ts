@@ -38,7 +38,23 @@ export const TRACK_PRESETS: readonly TrackPreset[] = Object.freeze([
   { id: 'prairie', name: 'Prairie Run', seed: 'PRAIRIE', blurb: 'Open meadow, big jump, three hairpins.', layout: 'loop', theme: 'meadow' },
   { id: 'oasis', name: 'Oasis Cross', seed: 'OASIS', blurb: 'Desert figure 8 around an oasis.', layout: 'figure8', theme: 'desert' },
   { id: 'tundra', name: 'Tundra Ring', seed: 'TUNDRA', blurb: 'Long snowy loop, hard braking zones.', layout: 'loop', theme: 'snow' },
-  { id: 'metro8', name: 'Metro Eight', seed: 'METRO8', blurb: 'City figure 8 crossing the main street.', layout: 'figure8', theme: 'dusk' }
+  { id: 'metro8', name: 'Metro Eight', seed: 'METRO8', blurb: 'City figure 8 crossing the main street.', layout: 'figure8', theme: 'dusk' },
+  { id: 'sunrise', name: 'Sunrise Ridge', seed: 'SUNRISE', blurb: 'Meadow climb with a crest jump.', layout: 'loop', theme: 'meadow' },
+  { id: 'maple8', name: 'Maple Cross', seed: 'MAPLE8', blurb: 'Countryside figure 8 over a bridge.', layout: 'figure8', theme: 'meadow' },
+  { id: 'sahara', name: 'Sahara Sweep', seed: 'SAHARA', blurb: 'Long desert straights, sharp exits.', layout: 'loop', theme: 'desert' },
+  { id: 'canyon8', name: 'Red Rock Eight', seed: 'REDROCK8', blurb: 'Desert figure 8 through red rocks.', layout: 'figure8', theme: 'desert' },
+  { id: 'blizzard', name: 'Blizzard Bend', seed: 'BLIZZARD', blurb: 'Snow loop with three hairpins.', layout: 'loop', theme: 'snow' },
+  { id: 'peak8', name: 'Summit Cross', seed: 'SUMMIT8', blurb: 'Snowy figure 8 high in the hills.', layout: 'figure8', theme: 'snow' },
+  { id: 'downtown', name: 'Downtown Dash', seed: 'DOWNTOWN', blurb: 'Dusk city loop between towers.', layout: 'loop', theme: 'dusk' },
+  { id: 'skyline8', name: 'Skyline Eight', seed: 'SKYLINE8', blurb: 'City figure 8 under the skyline.', layout: 'figure8', theme: 'dusk' },
+  { id: 'coral2', name: 'Coral Chain', seed: 'CORALCHAIN', blurb: 'Island chain with two sea bridges.', layout: 'island', theme: 'island' },
+  { id: 'lagoon2', name: 'Blue Lagoon', seed: 'BLUELAGOON', blurb: 'Calm lagoon, fast bridges.', layout: 'island', theme: 'island' },
+  { id: 'marina', name: 'Marina Loop', seed: 'MARINA', blurb: 'Islets linked by low bridges.', layout: 'island', theme: 'island' },
+  { id: 'orchard', name: 'Orchard Lanes', seed: 'ORCHARD', blurb: 'Tree-lined meadow sweepers.', layout: 'loop', theme: 'meadow' },
+  { id: 'dune8', name: 'Dune Knot', seed: 'DUNEKNOT', blurb: 'Desert figure 8 with a high deck.', layout: 'figure8', theme: 'desert' },
+  { id: 'aurora', name: 'Aurora Loop', seed: 'AURORA', blurb: 'Snow loop under a pale sky.', layout: 'loop', theme: 'snow' },
+  { id: 'neonbay', name: 'Neon Bay', seed: 'NEONBAY', blurb: 'Night loop by the harbour.', layout: 'loop', theme: 'dusk' },
+  { id: 'sandbar', name: 'Sandbar Run', seed: 'SANDBAR', blurb: 'Sandbars and two long bridges.', layout: 'island', theme: 'island' }
 ]);
 
 /** A named track picked at random, never `exceptSeed` (so pressing it always changes the map). */
