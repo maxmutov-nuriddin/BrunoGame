@@ -243,7 +243,7 @@ export default class RaceSimulation {
     const physics = car.physics;
     if (!physics.driftRewardEligible || car.trackSpeed < RULES.driftMinProgressSpeed) return;
     if (physics.driftCharge >= RULES.driftRewardCap) return;
-    const amount = Math.min(RULES.driftRewardRate * FIXED_DT, RULES.driftRewardCap - physics.driftCharge);
+    const amount = Math.min(RULES.driftRewardRate * physics.handling.driftNitroRate * FIXED_DT, RULES.driftRewardCap - physics.driftCharge);
     physics.driftCharge += amount;
     physics.addNitro(amount);
   }

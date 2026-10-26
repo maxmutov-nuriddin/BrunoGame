@@ -7,6 +7,7 @@ const GHOST_OPACITY = 0.42;
 /** Wheel tread lugs are most of a car's triangles but only a few pixels beyond this distance. */
 export const TREAD_DETAIL_DISTANCE = 12;
 const TREAD_NAME = /^Tread/;
+/** Fallback nitro flame origins for models without Exhaust_L / Exhaust_R nodes. */
 const EXHAUST = [
   [-0.45, 0.12, 2.15],
   [0.45, 0.12, 2.15]
@@ -48,7 +49,11 @@ export default class CarView {
     for (const { wheel } of this.wheels) wheel?.traverse((node) => node.isMesh && TREAD_NAME.test(node.name) && this.treads.push(node));
     this.treadVisible = true;
 
-    this.flames = EXHAUST.map(([x, y, z]) => {
+    this.exhaust = ['Exhaust_L', 'Exhaust_R'].map((nodeName, i) => {
+      const node = this.root.getObjectByName(nodeName);
+      return node ? [node.position.x, node.position.y, node.position.z] : EXHAUST[i];
+    });
+    this.flames = this.exhaust.map(([x, y, z]) => {
       const flame = new THREE.Mesh(
         new THREE.ConeGeometry(0.16, 1.1, 10, 1, true),
         new THREE.MeshBasicMaterial({ color: '#7fe6ff', transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })
@@ -134,7 +139,7 @@ export default class CarView {
 
   /** Exhaust positions in world space for nitro trails. */
   exhaustPoints() {
-    return EXHAUST.map(([x, y, z]) => new THREE.Vector3(x, y, z).applyMatrix4(this.group.matrixWorld));
+    return this.exhaust.map(([x, y, z]) => new THREE.Vector3(x, y, z).applyMatrix4(this.group.matrixWorld));
   }
 
   dispose() {

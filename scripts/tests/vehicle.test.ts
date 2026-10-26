@@ -138,3 +138,11 @@ test('wall hits slow the car by angle: glancing keeps most speed, head-on stops'
   assert.ok(medium > APPROACH_SPEED * 0.75 && medium < shallow, `45° hit costs more (${medium.toFixed(1)} m/s)`);
   assert.ok(headOn < 3, `head-on stops the car (${headOn.toFixed(1)} m/s)`);
 });
+
+test('every car in the roster has a GLB that passes the vehicle contract', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const files = VEHICLES.map((v) => `public/models/${v.file}`);
+  const output = execFileSync(process.execPath, ['scripts/check-vehicle.mjs', ...files], { encoding: 'utf8' });
+  assert.equal((output.match(/^PASS /gm) ?? []).length, VEHICLES.length, output);
+  assert.equal(new Set(VEHICLES.map((v) => v.id)).size, VEHICLES.length, 'ids are unique');
+});

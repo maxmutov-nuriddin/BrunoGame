@@ -38,6 +38,8 @@ export interface HandlingConfig {
   jumpImpulse: number;
   /** Air steering torque scale. */
   airControl: number;
+  /** Multiplier on the nitro a clean drift earns (the per-drift cap is unchanged). */
+  driftNitroRate: number;
 }
 
 export interface VehicleDefinition {
@@ -64,7 +66,8 @@ const BASE: HandlingConfig = {
   nitro: { strength: 1.55, speedBonus: 8, burnRate: 28 },
   health: 100,
   jumpImpulse: 4,
-  airControl: 1
+  airControl: 1,
+  driftNitroRate: 1
 };
 
 type HandlingOverrides = Partial<Omit<HandlingConfig, 'suspension' | 'nitro'>> & {
@@ -84,7 +87,7 @@ const define = (vehicle: Omit<VehicleDefinition, 'handling'> & { handling?: Hand
   });
 
 /**
- * Six deliberately different cars. Top speed is traded against health, grip or acceleration so the
+ * Twelve deliberately different cars (docs/VEHICLES.md). Top speed is traded against health, grip or acceleration so the
  * fastest car is fragile and twitchy, the heaviest wins contact but needs room to brake.
  */
 export const VEHICLES: readonly VehicleDefinition[] = Object.freeze([
@@ -135,6 +138,60 @@ export const VEHICLES: readonly VehicleDefinition[] = Object.freeze([
       mass: 1300, acceleration: 6700, maxSpeed: 37, steering: 0.5, steeringAtSpeed: 0.11, grip: 1.55, sideGrip: 1.05,
       driftGrip: 0.36, braking: 9800, suspension: { stiffness: 22, travel: 0.3, relaxation: 4.6 },
       nitro: { strength: 1.55, speedBonus: 8, burnRate: 27 }, health: 110, jumpImpulse: 5.5, airControl: 1.8
+    }
+  }),
+  define({
+    id: 'vandal-v8', resource: 'car-vandal-v8', name: 'Vandal V8', role: 'Drift king: loose rear, big torque',
+    file: 'vandal-v8.glb',
+    handling: {
+      mass: 1450, acceleration: 7600, maxSpeed: 39, steering: 0.45, steeringAtSpeed: 0.09, grip: 1.75, sideGrip: 1.05,
+      driftGrip: 0.24, braking: 10500, suspension: { stiffness: 33 }, nitro: { strength: 1.5, speedBonus: 8, burnRate: 28 },
+      health: 115, driftNitroRate: 1.25
+    }
+  }),
+  define({
+    id: 'gravel-fox', resource: 'car-gravel-fox', name: 'Gravel Fox', role: 'Rally: soaks up jumps and rough landings',
+    file: 'gravel-fox.glb',
+    handling: {
+      mass: 1180, acceleration: 6500, maxSpeed: 37, steering: 0.5, steeringAtSpeed: 0.11, grip: 1.9, sideGrip: 1.2,
+      driftGrip: 0.33, braking: 10000, suspension: { stiffness: 26, travel: 0.28 }, nitro: { strength: 1.5, speedBonus: 7, burnRate: 28 },
+      health: 105, jumpImpulse: 5, airControl: 1.6
+    }
+  }),
+  define({
+    id: 'volt-arrow', resource: 'car-volt-arrow', name: 'Volt Arrow', role: 'Electric: instant launch, drifts refill extra nitro',
+    file: 'volt-arrow.glb',
+    handling: {
+      mass: 1350, acceleration: 7800, maxSpeed: 38, steering: 0.46, steeringAtSpeed: 0.1, grip: 1.85, sideGrip: 1.15,
+      driftGrip: 0.32, braking: 11000, suspension: { stiffness: 34 }, nitro: { strength: 1.45, speedBonus: 7, burnRate: 24 },
+      health: 95, driftNitroRate: 1.6
+    }
+  }),
+  define({
+    id: 'kei-bolt', resource: 'car-kei-bolt', name: 'Kei Bolt', role: 'Tiny and agile, turns on a coin, fragile',
+    file: 'kei-bolt.glb',
+    handling: {
+      mass: 850, acceleration: 5600, maxSpeed: 33, steering: 0.6, steeringAtSpeed: 0.15, grip: 2.05, sideGrip: 1.3,
+      driftGrip: 0.3, braking: 8500, suspension: { stiffness: 26 }, nitro: { strength: 1.5, speedBonus: 7, burnRate: 30 },
+      health: 70
+    }
+  }),
+  define({
+    id: 'sundown-roadster', resource: 'car-sundown-roadster', name: 'Sundown Roadster', role: 'Best grip and handling, low health',
+    file: 'sundown-roadster.glb',
+    handling: {
+      mass: 1050, acceleration: 6100, maxSpeed: 37, steering: 0.52, steeringAtSpeed: 0.13, grip: 2.2, sideGrip: 1.4,
+      driftGrip: 0.36, braking: 10500, suspension: { stiffness: 31 }, nitro: { strength: 1.5, speedBonus: 7, burnRate: 28 },
+      health: 75
+    }
+  }),
+  define({
+    id: 'hornet-rs', resource: 'car-hornet-rs', name: 'Hornet RS', role: 'Nitro specialist: strongest boost, burns fast',
+    file: 'hornet-rs.glb',
+    handling: {
+      mass: 1200, acceleration: 6600, maxSpeed: 38, steering: 0.47, steeringAtSpeed: 0.1, grip: 1.8, sideGrip: 1.15,
+      driftGrip: 0.3, braking: 10200, suspension: { stiffness: 33 }, nitro: { strength: 1.9, speedBonus: 12, burnRate: 42 },
+      health: 90
     }
   })
 ]);

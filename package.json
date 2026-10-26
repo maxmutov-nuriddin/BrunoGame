@@ -15,9 +15,9 @@
     "test:vehicle": "tsx --test scripts/tests/vehicle.test.ts",
     "test:race": "tsx --test scripts/tests/race.test.ts",
     "test:multiplayer": "tsx --test --test-concurrency=1 scripts/tests/multiplayer.test.ts",
-    "model:car": "node scripts/build-car.mjs",
-    "model:pack": "node scripts/build-vehicle-pack.mjs",
+    "model:cars": "node scripts/build-cars.mjs",
     "model:world": "node scripts/build-world-pack.mjs",
+    "model:check": "node scripts/check-vehicle.mjs",
     "bench": "tsx scripts/bench.ts"
   },
   "dependencies": {
