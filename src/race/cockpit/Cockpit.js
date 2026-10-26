@@ -90,7 +90,8 @@ export default class Cockpit {
     this.box([1.7, 0.06, 1.1], [0, y - 0.44, z - 1.5], mat.paint, [-0.06, 0, 0]);
     this.box([1.78, 0.16, 0.52], [0, y - 0.52, z - 0.92], mat.dash, [-0.12, 0, 0]);
     this.box([1.7, 0.025, 0.02], [0, y - 0.44, z - 0.66], mat.trim);
-    this.box([0.5, 0.035, 0.24], [x, y - 0.215, z - 0.86], mat.dash);
+    // Thin shade above the gauges, high enough that it never covers the top of a dial.
+    this.box([0.5, 0.03, 0.14], [x, y - 0.165, z - 0.86], mat.dash);
     this.box([0.24, 0.3, 0.62], [0, y - 0.68, z - 0.32], mat.dash);
     this.tube([0, y - 0.56, z - 0.3], [0, y - 0.46, z - 0.26], 0.012, mat.chrome);
     const knob = new THREE.Mesh(this.geometry(new THREE.SphereGeometry(0.028, 12, 8)), mat.accent);
@@ -187,7 +188,7 @@ export default class Cockpit {
     const { radius, type, spokes = 3 } = this.style.wheel;
     const { mat } = this;
     this.wheel = new THREE.Group();
-    this.wheel.position.set(x, y - 0.41, z - 0.5);
+    this.wheel.position.set(x, y - 0.44, z - 0.5);
     this.wheel.rotation.x = WHEEL_TILT[type] ?? WHEEL_TILT.default;
     const rimMaterial = type === 'retro' ? mat.wheelAccent : mat.wheel;
     const spokeMaterial = type === 'retro' ? mat.chrome : mat.wheel;
