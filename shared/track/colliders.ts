@@ -4,7 +4,7 @@ import type { TrackDefinition } from './types.ts';
 
 /** Invisible barrier height above the road: tall enough that the jump crest never clears it. */
 export const BARRIER_COLLIDER_HEIGHT = 5;
-export const BARRIER_THICKNESS = 1.2;
+export const BARRIER_THICKNESS = 3;
 /** Road surface extends a little under the barriers so wheels never fall into a seam. */
 const ROAD_EDGE_OVERLAP = 1.4;
 const ROAD_FRICTION = 1.9;

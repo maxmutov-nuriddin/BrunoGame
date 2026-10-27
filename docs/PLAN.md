@@ -3,7 +3,15 @@
 Holat: 2026-10-27. Maqsad: devor/xarita xatolari va sakrashlarni yo'q qilish, kuchli optimizatsiya,
 o'z serverisiz onlayn (faqat Netlify) va Firebase akkauntlari.
 
-## 1-bosqich. Devordan o'tib ketish va xaritadan chiqish (eng muhim, ~0.5 kun)
+## 1-bosqich. Devordan o'tib ketish va xaritadan chiqish — BAJARILDI (2026-10-27)
+
+Qilingani:
+- chassisga hard CCD yoqildi;
+- devor kollideri 3 m qalinlikda;
+- `RaceSimulation.keepInsideBarriers`: devor ichidagi mashina yo'lga qaytariladi, 4 m dan uzoqqa chiqsa respawn.
+
+Test: `Phantom E at 300 km/h never ends up inside or past a barrier`. Substep kerak bo'lmadi.
+Onlayn client prediction'da himoya server/host simulyatsiyasi orqali ishlaydi.
 
 Sabab: Phantom 83 m/s da bir tickda ~1.4 m yuradi. Soft CCD masofasi esa 1.5 m, devor esa yupqa
 trimesh (1.2 m). Kuchli urilishda korpus devor ichiga kirib qoladi yoki undan o'tib ketadi.
@@ -15,7 +23,16 @@ trimesh (1.2 m). Kuchli urilishda korpus devor ichiga kirib qoladi yoki undan o'
    `> eni/2 + 4` bo'lsa, darhol respawn.
 4. Test: Phantom 300 km/h da devorga 10°, 45° va 90° burchakda urilganda devordan o'tmasligi.
 
-## 2-bosqich. Sakrashlar (jitter) — avval o'lchash, keyin tuzatish (~1 kun)
+## 2-bosqich. Sakrashlar (jitter) — BAJARILDI (2026-10-27)
+
+Qilingani:
+- F3 debug panel: FPS, ping, sekundiga replaylar, oxirgi xato, snapshot yoshi.
+- Lokal mashina ikki tick orasida interpolatsiya qilinadi.
+- Burilish (quaternion) tuzatishi ham silliq.
+- Raqiblar uchun velocity blending.
+- Soat offseti silliq (slew) o'zgaradi; tuzatish toleransi tezlikka bog'langan.
+
+Dastlabki reja:
 
 1. Debug panel (F3): FPS, ping, sekundiga tuzatishlar soni, replay uzunligi va xato metrlarda.
 2. Lokal mashinani renderda ikki fizika tick orasida interpolatsiya qilish. Hozir 60 Hz fizika
@@ -24,7 +41,16 @@ trimesh (1.2 m). Kuchli urilishda korpus devor ichiga kirib qoladi yoki undan o'
 4. Tuzatishni pozitsiya bilan birga burilishga (quaternion) ham silliq qo'llash.
 5. Kamera lokal mashinaning silliqlangan kadriga ergashadi, fizik tanaga emas.
 
-## 3-bosqich. Kuchli optimizatsiya (~1–1.5 kun)
+## 3-bosqich. Kuchli optimizatsiya — BAJARILDI (2026-10-27)
+
+O'lchangan natijalar:
+- Simulyatsiya brauzerda 6.06 → 0.56 ms/kadr. Sabab: hard CCD hamma mashinada edi, endi faqat 45 m/s dan tezlarida.
+- Web Worker kerak bo'lmadi.
+- Modellar meshopt bilan siqildi: mashinalar ~450 → ~110 KB.
+- Dinamik ruxsat: FPS tushsa, pixelRatio 0.6 gacha pasayadi.
+- Firebase SDK alohida chunk'da, boot'da yuklanmaydi va precache qilinmaydi.
+
+Dastlabki reja:
 
 1. O'lchash: Chrome Performance trace va `npm run bench`. Draw call, FPS va
    kadr vaqtini past/o'rta/yuqori sozlamalarda yozib olish.
@@ -36,7 +62,20 @@ trimesh (1.2 m). Kuchli urilishda korpus devor ichiga kirib qoladi yoki undan o'
    Service worker kesh.
 6. Maqsad: o'rta noutbukda 60 FPS barqaror, telefonda 30+ FPS.
 
-## 4-bosqich. Serversiz onlayn (Netlify + Firebase + WebRTC) (~3–4 kun)
+## 4-bosqich. Serversiz onlayn — BAJARILDI (2026-10-27)
+
+Kod:
+- `shared/host/` (HostServer), `shared/lobby/` (katalog, quick play);
+- `src/net/p2p/` (WebRTC + relay), `src/net/backend/` (Firebase + dev uchun BroadcastChannel);
+- `src/net/OnlineService.js`.
+
+`server/`, `ws` va Docker olib tashlandi. Protokol v3.
+
+Brauzerda ikki tabda tekshirildi: P2P poyga, quick play, relay va host chiqishi.
+
+Haqiqiy Firebase loyihasida hali sinalmagan: config kerak.
+
+Dastlabki reja:
 
 Netlify faqat statik fayllarni beradi, WebSocket server ishlata olmaydi. Yechim: o'yinchilar
 brauzerlari bir-biriga to'g'ridan-to'g'ri ulanadi (WebRTC). Firebase faqat ulanishni tanishtiradi
@@ -65,7 +104,13 @@ Cheklovlar (ochiq aytilgan):
 - Host aldashi mumkin (u simulyatsiyani boshqaradi). Do'stona o'yin uchun yetarli, reyting uchun emas.
 - 8 o'yinchi: host yuklamasi ~7 × 20 Hz snapshot. Oddiy noutbukka yetadi, telefon host bo'lmagani ma'qul.
 
-## 5-bosqich. Firebase akkauntlari va ma'lumotlar (~1–1.5 kun)
+## 5-bosqich. Firebase akkauntlari — KOD TAYYOR (2026-10-27), Firebase config kutilmoqda
+
+Qilingani:
+- anonim + Google kirish, `users/{uid}` profil sinxroni (`AccountSync`), promo akkauntda;
+- `firestore.rules`, `database.rules.json`, `firebase.json`, `netlify.toml`.
+
+Dastlabki reja:
 
 Ha, Firebase bunga to'g'ri keladi. Bepul Spark tarifi yetadi:
 kuniga 50k o'qish va 20k yozish.

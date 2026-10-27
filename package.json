@@ -5,13 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "tsx watch server/main.ts",
-    "dev:all": "node scripts/dev-all.mjs",
     "build": "vite build",
-    "start:server": "tsx server/main.ts",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "npm run typecheck && tsx --test --test-concurrency=1 scripts/tests/vehicle.test.ts scripts/tests/race.test.ts scripts/tests/multiplayer.test.ts",
+    "test": "npm run typecheck && tsx --test --test-concurrency=1 scripts/tests/vehicle.test.ts scripts/tests/race.test.ts scripts/tests/lobby.test.ts scripts/tests/p2p.test.ts scripts/tests/multiplayer.test.ts",
     "test:vehicle": "tsx --test scripts/tests/vehicle.test.ts",
     "test:race": "tsx --test scripts/tests/race.test.ts",
     "test:multiplayer": "tsx --test --test-concurrency=1 scripts/tests/multiplayer.test.ts",
@@ -22,16 +19,22 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.17.3",
+    "firebase": "^13.1.0",
     "qrcode-generator": "^2.0.4",
     "three": "^0.179.1",
-    "tsx": "^4.23.15",
-    "ws": "^8.22.0"
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@types/node": "^26.6.5",
     "@types/three": "^0.179.0",
-    "@types/ws": "^8.18.2",
+    "meshoptimizer": "^1.3.0",
     "typescript": "^5.9.3",
     "vite": "^6.2.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.6"
   }
 }

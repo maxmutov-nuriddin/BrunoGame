@@ -1,7 +1,7 @@
-import { SNAPSHOT_EVERY_TICKS, TICK_RATE } from '../../shared/constants.ts';
-import RaceSimulation from '../../shared/race/RaceSimulation.ts';
-import { baseSnapshot, privateState } from '../../shared/net/snapshot.ts';
-import type Player from '../Player.ts';
+import { SNAPSHOT_EVERY_TICKS, TICK_RATE } from '../constants.ts';
+import RaceSimulation from '../race/RaceSimulation.ts';
+import { baseSnapshot, privateState } from '../net/snapshot.ts';
+import type Player from './Player.ts';
 
 const TICK_MS = 1000 / TICK_RATE;
 /** Never simulate more than this many ticks per update; a stalled process skips rather than spirals. */

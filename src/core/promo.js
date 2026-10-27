@@ -14,11 +14,13 @@ const MAX_CODE_LENGTH = 40;
 
 export const normalizePromoCode = (code) => String(code ?? '').replace(/\s+/g, '').toUpperCase().slice(0, MAX_CODE_LENGTH);
 
+/** Salted hash of a code: the key in PROMO_HASHES and the Firestore promoCodes document id. */
+export const promoHash = (code) => sha256Hex(SALT + normalizePromoCode(code));
+
 /** Vehicle id the code unlocks, or null for an unknown code. */
 export function redeemPromoCode(code) {
-  const normalized = normalizePromoCode(code);
-  if (!normalized) return null;
-  return PROMO_HASHES[sha256Hex(SALT + normalized)] ?? null;
+  if (!normalizePromoCode(code)) return null;
+  return PROMO_HASHES[promoHash(code)] ?? null;
 }
 
 const K = new Uint32Array([

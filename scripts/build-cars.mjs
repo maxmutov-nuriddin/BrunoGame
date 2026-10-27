@@ -3,6 +3,8 @@
 import { writeFile } from 'node:fs/promises';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { DESIGNS } from './cars/designs.mjs';
+import { fileURLToPath } from 'node:url';
+import { compressModels } from './compress-models.mjs';
 
 // GLTFExporter uses FileReader to pack the binary; Node has Blob but no FileReader.
 globalThis.FileReader = class {
@@ -31,6 +33,8 @@ for (const id of requested.length > 0 ? requested : Object.keys(DESIGNS)) {
   const car = DESIGNS[id]();
   car.updateMatrixWorld(true);
   const glb = await new GLTFExporter().parseAsync(car, { binary: true });
-  await writeFile(new URL(`../public/models/${id}.glb`, import.meta.url), Buffer.from(glb));
+  const file = new URL(`../public/models/${id}.glb`, import.meta.url);
+  await writeFile(file, Buffer.from(glb));
   console.log(`${id}.glb  ${(glb.byteLength / 1024).toFixed(0)} KB`);
+  await compressModels([fileURLToPath(file)]);
 }

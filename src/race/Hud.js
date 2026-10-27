@@ -24,6 +24,7 @@ export default class Hud {
       <ol class="hud-board" data-board></ol>
       <div class="hud-map" data-map></div>
       <div class="hud-net" data-net hidden></div>
+      <pre class="hud-debug" data-debug hidden></pre>
       <div class="hud-dash">
         <div class="hud-speed"><b data-speed>0</b><small>KM/H</small></div>
         <div class="hud-bars">
@@ -45,7 +46,7 @@ export default class Hud {
     this.el = {
       rank: $('rank'), lap: $('lap'), time: $('time'), best: $('best'), board: $('board'), speed: $('speed'), nitro: $('nitro'),
       health: $('health'), itemSlot: $('item-slot'), itemIcon: $('item-icon'), itemName: $('item-name'), count: $('count'),
-      banner: $('banner'), wrong: $('wrong'), feed: $('feed'), net: $('net')
+      banner: $('banner'), wrong: $('wrong'), feed: $('feed'), net: $('net'), debug: $('debug')
     };
     this.minimap = new Minimap(track, colors);
     $('map').appendChild(this.minimap.canvas);
@@ -60,6 +61,12 @@ export default class Hud {
     if (this.cache.get(key) === value) return;
     this.cache.set(key, value);
     element[property] = value;
+  }
+
+  /** F3 panel: plain text, or null to hide it. */
+  setDebug(text) {
+    this.el.debug.hidden = text === null;
+    if (text !== null) this.el.debug.textContent = text;
   }
 
   update(frames, { displayTick, goTick, introTicks, phase, net }) {

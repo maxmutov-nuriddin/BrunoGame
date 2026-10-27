@@ -6,7 +6,7 @@ import { createRng, type Rng } from '../rng.ts';
 import { findVehicle } from '../vehicles.ts';
 import { buildTrackColliders } from '../track/colliders.ts';
 import { TrackLocator } from '../track/locator.ts';
-import type { TrackDefinition } from '../track/types.ts';
+import type { TrackDefinition, TrackSample } from '../track/types.ts';
 import RaceCar, { type ParticipantConfig } from './RaceCar.ts';
 import { RULES } from './rules.ts';
 import { gateCrossing, raceProgress } from './progress.ts';
@@ -14,6 +14,13 @@ import { WEAPON, rollItem, type ItemKind } from './items.ts';
 import { Combat } from './combat.ts';
 import { BotDriver } from './bot.ts';
 import type { SimEvent } from './events.ts';
+
+/** Barrier inner face, past the road edge (m); see track/colliders.ts. */
+const BARRIER_FACE_OFFSET = 0.4;
+/** A car centre this far inside a barrier is past saving: respawn instead of pushing back. */
+const BARRIER_RESPAWN_OVERSHOOT = 4;
+/** Pushed back this far clear of the barrier face, so the next tick does not start in contact. */
+const BARRIER_PUSHBACK_MARGIN = 0.9;
 
 export type RaceMode = 'race' | 'timeTrial';
 export type RacePhase = 'countdown' | 'racing' | 'finished';
@@ -219,6 +226,7 @@ export default class RaceSimulation {
     const sample = this.track.samples[location.index];
     car.trackSpeed = physics.velocity.x * sample.tx + physics.velocity.z * sample.tz;
 
+    if (this.phase === 'racing' && this.keepInsideBarriers(car, sample)) return;
     if (this.phase === 'racing') {
       this.handleImpact(car, p);
       this.rewardDrift(car);
@@ -228,6 +236,29 @@ export default class RaceSimulation {
       this.handleGhost(car);
     }
     car.progress = raceProgress(this.track, car.lapsCompleted, car.lastCheckpoint, car.nextCheckpoint, location.s);
+  }
+
+  /**
+   * Safety net behind the barrier colliders: a car whose centre ended up inside a barrier is put back on
+   * the road with its outward velocity removed; one that got far past it respawns. Returns true on respawn.
+   */
+  private keepInsideBarriers(car: RaceCar, sample: TrackSample): boolean {
+    const half = this.track.width / 2;
+    const overshoot = Math.abs(car.lateral) - (half + BARRIER_FACE_OFFSET);
+    if (overshoot <= 0 || car.isWrecked(this.tick)) return false;
+    if (overshoot > BARRIER_RESPAWN_OVERSHOOT) {
+      this.respawn(car, 0, false);
+      return true;
+    }
+    const side = Math.sign(car.lateral);
+    const back = overshoot + BARRIER_PUSHBACK_MARGIN;
+    const p = car.physics.body.translation();
+    car.physics.body.setTranslation({ x: p.x - sample.nx * side * back, y: p.y, z: p.z - sample.nz * side * back }, true);
+    const v = car.physics.body.linvel();
+    const outward = (v.x * sample.nx + v.z * sample.nz) * side;
+    if (outward > 0) car.physics.body.setLinvel({ x: v.x - sample.nx * side * outward, y: v.y, z: v.z - sample.nz * side * outward }, true);
+    car.lateral -= side * back;
+    return false;
   }
 
   private handleImpact(car: RaceCar, p: { x: number; y: number; z: number }): void {

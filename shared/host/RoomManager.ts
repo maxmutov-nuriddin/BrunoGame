@@ -1,12 +1,12 @@
-import { now } from '../clock.ts';
-import { randomInt } from 'node:crypto';
-import { PROTOCOL_VERSION, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, type ClientMessage } from '../../shared/net/protocol.ts';
-import type { ServerConfig } from '../config.ts';
-import Player, { type Transport } from '../Player.ts';
+import { now } from './clock.ts';
+import { randomInt } from './random.ts';
+import { PROTOCOL_VERSION, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, type ClientMessage } from '../net/protocol.ts';
+import { randomPreset } from '../track/presets.ts';
+import type { HostConfig } from './config.ts';
+import Player, { type Transport } from './Player.ts';
 import Room, { type RoomError } from './Room.ts';
-import Matchmaker from './Matchmaker.ts';
 
-const ERROR_TEXT: Record<RoomError | 'not-found' | 'version' | 'resume-failed' | 'no-room' | 'server-full' | 'hello-first' | 'slow-down', string> = {
+const ERROR_TEXT: Record<RoomError | 'not-found' | 'version' | 'resume-failed' | 'no-room' | 'server-full' | 'hello-first' | 'slow-down' | 'host-only', string> = {
   'not-host': 'Only the host can do that.',
   'wrong-state': 'Not possible right now.',
   'not-ready': 'Everyone must be ready first.',
@@ -20,34 +20,27 @@ const ERROR_TEXT: Record<RoomError | 'not-found' | 'version' | 'resume-failed' |
   'hello-first': 'Say hello first.',
   'too-soon': 'Wait a moment before starting again.',
   'start-failed': 'The race could not be built. Try another track.',
-  'slow-down': 'Too many rooms created; wait a few seconds.'
+  'slow-down': 'Too many rooms created; wait a few seconds.',
+  'host-only': 'Only the player hosting this game can create rooms.'
 };
 
 /** One player may create at most this many rooms per window. */
 const ROOM_CREATE_LIMIT = 3;
 const ROOM_CREATE_WINDOW_MS = 60_000;
 
-/** Session handling, room codes and message routing. Holds no game logic itself. */
+/**
+ * Session handling, room codes and message routing for one host (a player's browser, or a test).
+ * Only the host's own connection (`transport.local`) may create rooms; remote players join them.
+ * Quick-play matching happens outside, in a lobby directory; a matched player arrives with `joinPublic`.
+ */
 export default class RoomManager {
   readonly rooms = new Map<string, Room>();
   readonly players = new Map<string, Player>();
   private readonly byToken = new Map<string, Player>();
-  private readonly config: ServerConfig;
-  readonly matchmaker: Matchmaker;
+  private readonly config: HostConfig;
 
-  constructor(config: ServerConfig) {
+  constructor(config: HostConfig) {
     this.config = config;
-    this.matchmaker = new Matchmaker({
-      publicRooms: () => [...this.rooms.values()].filter((room) => room.isPublic),
-      createPublicRoom: (trackSeed, trackName) => {
-        if (this.rooms.size >= this.config.maxRooms) return null;
-        const code = this.newCode();
-        const room = new Room(code, null, this.config.loadTimeoutMs, { trackSeed, trackName });
-        this.rooms.set(code, room);
-        return room;
-      },
-      leaveRoom: (player) => this.leave(player)
-    });
   }
 
   private error(player: Player | Transport, code: keyof typeof ERROR_TEXT): void {
@@ -91,17 +84,12 @@ export default class RoomManager {
         if (room) room.setVehicle(player, message.vehicleId);
         player.vehicleId = message.vehicleId;
         return player;
-      case 'queueJoin':
-        this.matchmaker.join(player);
-        return player;
-      case 'queueLeave':
-        this.matchmaker.leave(player);
-        return player;
-      case 'matchAccept':
-        this.matchmaker.accept(player, message.offerId);
-        return player;
       case 'createRoom':
-        this.matchmaker.leave(player);
+      case 'createPublicRoom':
+        if (!player.transport?.local) {
+          this.error(player, 'host-only');
+          return player;
+        }
         if (!this.allowCreate(player)) {
           this.error(player, 'slow-down');
           return player;
@@ -111,11 +99,25 @@ export default class RoomManager {
           this.error(player, 'server-full');
           return player;
         }
-        {
-          const code = this.newCode();
-          this.rooms.set(code, new Room(code, player, this.config.loadTimeoutMs));
-        }
+        this.createRoom(player, message.type === 'createPublicRoom');
         return player;
+      case 'joinPublic': {
+        const target = this.rooms.get(message.code);
+        if (!target?.isPublic) {
+          this.error(player, 'not-found');
+          return player;
+        }
+        if (target === room) return player;
+        const problem = target.canJoin();
+        if (problem) {
+          this.error(player, problem);
+          return player;
+        }
+        if (room) this.leave(player);
+        // Accepting the match was the ready press.
+        target.add(player, true);
+        return player;
+      }
       case 'joinRoom': {
         const target = this.rooms.get(message.code);
         if (!target) {
@@ -123,13 +125,12 @@ export default class RoomManager {
           return player;
         }
         if (target === room) return player;
-        // Quick-play rooms are only reached through the matchmaker.
+        // Quick-play rooms are only reached through the lobby directory (joinPublic).
         const problem = target.isPublic ? 'in-progress' : target.canJoin();
         if (problem) {
           this.error(player, problem);
           return player;
         }
-        this.matchmaker.leave(player);
         if (room) this.leave(player);
         target.add(player);
         return player;
@@ -169,6 +170,19 @@ export default class RoomManager {
     }
     if (problem) this.error(player, problem);
     return player;
+  }
+
+  /** A private room is hosted by its creator; a public one has no host and starts by itself. */
+  private createRoom(player: Player, isPublic: boolean): void {
+    const code = this.newCode();
+    if (!isPublic) {
+      this.rooms.set(code, new Room(code, player, this.config.loadTimeoutMs));
+      return;
+    }
+    const preset = randomPreset();
+    const room = new Room(code, null, this.config.loadTimeoutMs, { trackSeed: preset.seed, trackName: preset.name });
+    this.rooms.set(code, room);
+    room.add(player, true);
   }
 
   private readonly roomCreations = new Map<string, number[]>();
@@ -212,15 +226,13 @@ export default class RoomManager {
     const room = player.room;
     if (!room) return;
     room.remove(player);
-    // An empty quick-play room survives while someone holds an offer for it.
-    if (room.isEmpty && room.reserved === 0) this.closeRoom(room);
+    if (room.isEmpty) this.closeRoom(room);
   }
 
   disconnected(player: Player, transport: Transport): void {
     if (player.transport !== transport) return;
     player.transport = null;
     player.disconnectedAt = now();
-    this.matchmaker.forget(player);
     player.room?.disconnected(player);
   }
 
@@ -231,7 +243,6 @@ export default class RoomManager {
 
   /** Called every few ms: steps races. */
   update(now: number): void {
-    this.matchmaker.update(now);
     for (const room of this.rooms.values()) room.update(now);
   }
 
@@ -249,13 +260,11 @@ export default class RoomManager {
         continue;
       }
       if (room) this.leave(player);
-      this.matchmaker.forget(player);
       this.players.delete(player.id);
       this.byToken.delete(player.token);
       this.roomCreations.delete(player.id);
     }
     for (const room of [...this.rooms.values()]) {
-      if (room.reserved > 0) continue;
       if (room.isEmpty || room.players.every((p) => !p.connected && now - p.disconnectedAt > this.config.raceGraceMs)) {
         for (const p of room.players) {
           this.players.delete(p.id);
@@ -267,6 +276,6 @@ export default class RoomManager {
   }
 
   stats() {
-    return { rooms: this.rooms.size, players: this.players.size, racing: [...this.rooms.values()].filter((r) => r.state === 'racing').length, ...this.matchmaker.stats() };
+    return { rooms: this.rooms.size, players: this.players.size, racing: [...this.rooms.values()].filter((r) => r.state === 'racing').length };
   }
 }

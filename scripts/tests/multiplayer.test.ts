@@ -1,43 +1,43 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer, type RunningServer } from '../../server/index.ts';
-import { loadConfig } from '../../server/config.ts';
-import { setTimeScale } from '../../server/clock.ts';
+import HostServer from '../../shared/host/HostServer.ts';
+import { setTimeScale } from '../../shared/host/clock.ts';
 import { trackFingerprint } from '../../shared/track/fingerprint.ts';
 import { CAR_FLAG, PROTOCOL_VERSION } from '../../shared/net/protocol.ts';
 import { TestClient } from './netClient.ts';
 
 const TIME_SCALE = 3;
-let server: RunningServer;
-let url = '';
+let server: HostServer;
 const clients: TestClient[] = [];
 
 before(async () => {
   setTimeScale(TIME_SCALE);
-  server = await startServer({ ...loadConfig({}), port: 0, host: '127.0.0.1', raceGraceMs: 20_000, lobbyGraceMs: 3_000, maxConnectionsPerIp: 100 });
-  url = `ws://127.0.0.1:${server.port}/ws`;
+  server = await HostServer.create({ raceGraceMs: 20_000, lobbyGraceMs: 3_000, maxRooms: 50 });
+  server.start();
 });
 
-after(async () => {
+after(() => {
   for (const c of clients) c.close();
-  await server.close();
+  server.dispose();
   setTimeScale(1);
 });
 
-async function connect(name: string, latencyMs = 0): Promise<TestClient> {
-  const client = new TestClient(url, latencyMs);
+/** `local` is the host's own browser: the only connection allowed to create rooms. */
+async function connect(name: string, latencyMs = 0, local = false): Promise<TestClient> {
+  const client = new TestClient(server, latencyMs, local);
   clients.push(client);
-  await client.open();
   await client.hello(name);
   return client;
 }
+
+const connectHost = (name: string, latencyMs = 0) => connect(name, latencyMs, true);
 
 async function roomOf(client: TestClient) {
   return client.waitFor('room');
 }
 
 test('lobby: create, join by code, ready gating, settings and host transfer', async () => {
-  const host = await connect('Host');
+  const host = await connectHost('Host');
   host.send({ type: 'createRoom' });
   const room = await roomOf(host);
   assert.equal(room.code.length, 6);
@@ -72,7 +72,7 @@ test('lobby: create, join by code, ready gating, settings and host transfer', as
 });
 
 test('a car chosen in the lobby is the car each player races', async () => {
-  const host = await connect('Picker');
+  const host = await connectHost('Picker');
   host.send({ type: 'createRoom' });
   const room = await roomOf(host);
   host.send({ type: 'updateSettings', settings: { laps: 1, fillBots: false, trackSeed: 'CARPICK' } });
@@ -114,7 +114,7 @@ test('malformed, oversized and out-of-range messages are rejected', async () => 
 });
 
 test('two clients race with bots: synced start, shared world, identical results, rematch without reload', async () => {
-  const a = await connect('Alice');
+  const a = await connectHost('Alice');
   const b = await connect('Bob');
   a.send({ type: 'createRoom' });
   const room = await roomOf(a);
@@ -159,7 +159,7 @@ test('two clients race with bots: synced start, shared world, identical results,
 });
 
 test('disconnect mid-race: a bot takes over, the player resumes with a token and gets a full snapshot', async () => {
-  const a = await connect('Ana');
+  const a = await connectHost('Ana');
   const b = await connect('Ben');
   a.send({ type: 'createRoom' });
   const room = await roomOf(a);
@@ -181,9 +181,8 @@ test('disconnect mid-race: a bot takes over, the player resumes with a token and
   const taken = await a.waitFor('snapshot', (m) => m.s.cars.some((c) => c[0] === benId && (c[16] & CAR_FLAG.BOT_DRIVEN) !== 0));
   assert.ok(taken, 'bot drives the disconnected car');
 
-  const back = new TestClient(url);
+  const back = new TestClient(server);
   clients.push(back);
-  await back.open();
   back.send({ type: 'resume', v: PROTOCOL_VERSION, token });
   const welcome = await back.waitFor('welcome');
   assert.equal(welcome.playerId, benId);
@@ -194,9 +193,8 @@ test('disconnect mid-race: a bot takes over, the player resumes with a token and
   const restored = await a.waitFor('snapshot', (m) => m.s.cars.some((c) => c[0] === benId && (c[16] & CAR_FLAG.BOT_DRIVEN) === 0));
   assert.ok(restored, 'human control restored');
 
-  const stale = new TestClient(url);
+  const stale = new TestClient(server);
   clients.push(stale);
-  await stale.open();
   stale.send({ type: 'resume', v: PROTOCOL_VERSION, token: 'x'.repeat(30) });
   assert.equal((await stale.waitFor('error')).code, 'resume-failed');
   a.send({ type: 'leaveRoom' });
@@ -204,7 +202,7 @@ test('disconnect mid-race: a bot takes over, the player resumes with a token and
 });
 
 test('eight clients fill one room; a ninth is turned away; the server stays fast', async () => {
-  const players = await Promise.all(Array.from({ length: 8 }, (_, i) => connect(`P${i}`, 40)));
+  const players = await Promise.all(Array.from({ length: 8 }, (_, i) => connect(`P${i}`, 40, i === 0)));
   const [host, ...rest] = players;
   host.send({ type: 'createRoom' });
   const room = await roomOf(host);
@@ -237,61 +235,46 @@ test('eight clients fill one room; a ninth is turned away; the server stays fast
   }
 });
 
-test('one IP cannot open unlimited sockets, and silent sockets are dropped', async () => {
-  const strict = await startServer({ ...loadConfig({}), port: 0, host: '127.0.0.1', maxConnectionsPerIp: 2 });
-  const strictUrl = `ws://127.0.0.1:${strict.port}/ws`;
-  const a = new TestClient(strictUrl);
-  const b = new TestClient(strictUrl);
-  await Promise.all([a.open(), b.open()]);
-  await a.hello('A');
-  await b.hello('B');
-  const c = new TestClient(strictUrl);
-  const closed = new Promise<number>((resolve) => c.ws.on('close', (code) => resolve(code)));
-  assert.equal(await closed, 1008, 'third socket from the same IP is refused');
-  a.close();
-  b.close();
-  await strict.close();
+test('only the host connection can create rooms; guests join', async () => {
+  const guest = await connect('Guest');
+  guest.send({ type: 'createRoom' });
+  assert.equal((await guest.waitFor('error')).code, 'host-only');
+  guest.clear();
+  guest.send({ type: 'createPublicRoom' });
+  assert.equal((await guest.waitFor('error')).code, 'host-only');
 });
 
-test('quick play: 3 players accept, the countdown runs, the race starts and the room locks', async () => {
-  const players = await Promise.all(['Q1', 'Q2', 'Q3'].map((name) => connect(name)));
-  for (const p of players) p.send({ type: 'queueJoin' });
-  for (const p of players) {
-    const found = await p.waitFor('matchFound');
-    p.send({ type: 'matchAccept', offerId: found.offerId });
-  }
+test('quick play: guests matched to a public room, the countdown runs at 3, the race starts and the room locks', async () => {
+  const host = await connectHost('Q1');
+  host.send({ type: 'createPublicRoom' });
+  const room = await host.waitFor('room', (m) => m.public);
+  assert.ok(room.players[0].ready, 'the host sits in their own public room, ready');
+  const guests = await Promise.all(['Q2', 'Q3'].map((name) => connect(name)));
+  for (const g of guests) g.send({ type: 'joinPublic', code: room.code });
+  const players = [host, ...guests];
   const rooms = await Promise.all(players.map((p) => p.waitFor('room', (m) => m.public && m.players.length === 3)));
   assert.equal(new Set(rooms.map((r) => r.code)).size, 1, 'all three land in the same public room');
-  const counting = await players[0].waitFor('room', (m) => m.public && m.countdownEndsAt > 0);
+  const counting = await host.waitFor('room', (m) => m.public && m.countdownEndsAt > 0);
   assert.ok(counting.players.every((p) => p.ready), 'accepting is the ready press');
   const setups = await Promise.all(players.map((p) => p.waitFor('raceSetup', () => true, 15000)));
   assert.equal(setups[0].setup.participants.length, 3, 'no bots in quick play');
 
-  // The started room is closed: a newcomer is matched elsewhere and cannot join it by code.
+  // The started room is closed: a newcomer cannot take a seat, by quick play or by code.
   const late = await connect('Late');
-  late.send({ type: 'joinRoom', code: rooms[0].code });
+  late.send({ type: 'joinPublic', code: room.code });
   assert.equal((await late.waitFor('error')).code, 'in-progress');
-  late.send({ type: 'queueJoin' });
-  const offer = await late.waitFor('matchFound');
-  late.send({ type: 'matchAccept', offerId: offer.offerId });
-  const other = await late.waitFor('room', (m) => m.public);
-  assert.notEqual(other.code, rooms[0].code, 'a started room never takes new players');
-  for (const p of [...players, late]) p.send({ type: 'leaveRoom' });
+  late.clear();
+  late.send({ type: 'joinRoom', code: room.code });
+  assert.equal((await late.waitFor('error')).code, 'in-progress');
+  for (const p of players) p.send({ type: 'leaveRoom' });
 });
 
-test('quick play: a match not accepted within 10 s lapses and frees the seat', async () => {
-  const idle = await connect('Idle');
-  idle.send({ type: 'queueJoin' });
-  const found = await idle.waitFor('matchFound');
-  const expired = await idle.waitFor('matchExpired', () => true, 8000);
-  assert.equal(expired.offerId, found.offerId);
-  assert.equal((await idle.waitFor('queueStatus', (m) => !m.searching)).searching, false, 'search stops');
-  idle.send({ type: 'matchAccept', offerId: found.offerId });
-  const keen = await connect('Keen');
-  keen.send({ type: 'queueJoin' });
-  const offer = await keen.waitFor('matchFound');
-  keen.send({ type: 'matchAccept', offerId: offer.offerId });
-  const room = await keen.waitFor('room', (m) => m.public);
-  assert.equal(room.players.length, 1, 'the lapsed seat went back to the pool; the idle player never joined');
-  keen.send({ type: 'leaveRoom' });
+test('joinPublic never reaches a private room', async () => {
+  const host = await connectHost('Private');
+  host.send({ type: 'createRoom' });
+  const room = await roomOf(host);
+  const guest = await connect('Sneaky');
+  guest.send({ type: 'joinPublic', code: room.code });
+  assert.equal((await guest.waitFor('error')).code, 'not-found');
+  host.send({ type: 'leaveRoom' });
 });

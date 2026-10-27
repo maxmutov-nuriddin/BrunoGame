@@ -62,10 +62,16 @@ function walk(json, visit) {
   for (const root of scene?.nodes ?? []) recurse(root, new T.Matrix4(), []);
 }
 
+/** Largest value of each normalized integer component type (BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT). */
+const NORMALIZED_MAX = { 5120: 127, 5121: 255, 5122: 32767, 5123: 65535 };
+
 function primitiveBox(json, primitive) {
   const accessor = json.accessors[primitive.attributes.POSITION];
   if (!accessor?.min || !accessor?.max) return null;
-  return new T.Box3(new T.Vector3(...accessor.min), new T.Vector3(...accessor.max));
+  // Quantized (KHR_mesh_quantization) positions are normalized integers; the node transform rescales them.
+  const scale = accessor.normalized ? 1 / NORMALIZED_MAX[accessor.componentType] : 1;
+  const unpack = (values) => new T.Vector3(...values.map((v) => Math.max(v * scale, -1)));
+  return new T.Box3(unpack(accessor.min), unpack(accessor.max));
 }
 
 function primitiveTriangles(json, primitive) {

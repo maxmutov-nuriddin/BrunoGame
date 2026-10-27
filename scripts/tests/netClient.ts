@@ -1,4 +1,5 @@
-import WebSocket from 'ws';
+import type HostServer from '../../shared/host/HostServer.ts';
+import type { HostConnection } from '../../shared/host/HostServer.ts';
 import * as THREE from 'three';
 import { PROTOCOL_VERSION, type ServerMessage, type WireCar, type RaceSetup } from '../../shared/net/protocol.ts';
 import { encodeInput, NEUTRAL_INPUT, type DriveInput } from '../../shared/input.ts';
@@ -7,9 +8,14 @@ import { linePath } from '../../shared/race/linePath.ts';
 
 type Waiter = { match: (m: ServerMessage) => boolean; resolve: (m: ServerMessage) => void; reject: (e: Error) => void; timer: NodeJS.Timeout };
 
-/** Minimal headless game client for integration tests. */
+/**
+ * Minimal headless game client for integration tests, linked to a HostServer in memory (the same path a
+ * WebRTC data channel takes in the browser). `latencyMs` delays both directions with jitter.
+ */
 export class TestClient {
-  readonly ws: WebSocket;
+  private readonly link: HostConnection;
+  open = true;
+  closeCode = -1;
   readonly messages: ServerMessage[] = [];
   private waiters: Waiter[] = [];
   token = '';
@@ -21,13 +27,20 @@ export class TestClient {
   private drivingTimer: NodeJS.Timeout | null = null;
   private latencyMs: number;
 
-  constructor(url: string, latencyMs = 0) {
+  constructor(host: HostServer, latencyMs = 0, local = false) {
     this.latencyMs = latencyMs;
-    this.ws = new WebSocket(url);
-    this.ws.on('message', (data) => {
-      const deliver = () => this.receive(JSON.parse(data.toString()) as ServerMessage);
-      if (this.latencyMs > 0) setTimeout(deliver, this.jitter());
-      else deliver();
+    this.link = host.connect({
+      local,
+      send: (text: string) => {
+        if (!this.open) return;
+        const deliver = () => this.receive(JSON.parse(text) as ServerMessage);
+        if (this.latencyMs > 0) setTimeout(deliver, this.jitter());
+        else deliver();
+      },
+      close: (code = 1000) => {
+        this.closeCode = code;
+        this.close();
+      }
     });
   }
 
@@ -53,17 +66,11 @@ export class TestClient {
     }
   }
 
-  open(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.ws.once('open', () => resolve());
-      this.ws.once('error', reject);
-    });
-  }
-
   send(message: unknown): void {
     const text = typeof message === 'string' ? message : JSON.stringify(message);
-    if (this.latencyMs > 0) setTimeout(() => this.ws.readyState === WebSocket.OPEN && this.ws.send(text), this.jitter());
-    else this.ws.send(text);
+    if (!this.open) return;
+    if (this.latencyMs > 0) setTimeout(() => this.open && this.link.receive(text), this.jitter());
+    else this.link.receive(text);
   }
 
   waitFor<T extends ServerMessage['type']>(type: T, predicate: (m: Extract<ServerMessage, { type: T }>) => boolean = () => true, timeoutMs = 15000): Promise<Extract<ServerMessage, { type: T }>> {
@@ -122,6 +129,8 @@ export class TestClient {
 
   close(): void {
     this.stopDriving();
-    this.ws.close();
+    if (!this.open) return;
+    this.open = false;
+    this.link.closed();
   }
 }

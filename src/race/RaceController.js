@@ -9,6 +9,8 @@ import { escapeHtml, ordinal } from '../ui/format.js';
 import { keyLabel } from '../ui/icons.js';
 import { CAMERA_MODES } from '../core/Settings.js';
 
+const DEBUG_REFRESH_SECONDS = 0.5;
+
 const CAMERA_NAMES = { chase: 'Chase camera', far: 'Far camera', hood: 'Hood camera', cockpit: 'Cockpit camera' };
 /** First-person modes hide the car body and show the rear-view mirror. */
 const FIRST_PERSON = new Set(['hood', 'cockpit']);
@@ -52,6 +54,11 @@ export default class RaceController {
     // Enter or Space also skips the intro (the race has not started, so they do nothing else yet).
     this.onIntroKey = (event) => {
       if ((event.code === 'Enter' || event.code === 'Space') && this.inIntro) this.skipIntro();
+      if (event.code === 'F3') {
+        event.preventDefault();
+        this.debug = this.debug ? null : { time: 0, frames: 0, replays: session.stats?.replays ?? 0 };
+        this.hud.setDebug(this.debug ? 'measuring…' : null);
+      }
     };
     window.addEventListener('keydown', this.onIntroKey);
     this.buildTouch();
@@ -123,6 +130,25 @@ export default class RaceController {
     this.view.chase.snap();
   }
 
+  /** F3: frame rate, network health and replay rate, refreshed twice a second. */
+  updateDebug(dt, me) {
+    const d = this.debug;
+    d.time += dt;
+    d.frames += 1;
+    if (d.time < DEBUG_REFRESH_SECONDS) return;
+    const { session, game } = this;
+    const lines = [`fps ${Math.round(d.frames / d.time)}`, `speed ${Math.round((me?.speed ?? 0) * 3.6)} km/h`];
+    if (session.kind === 'online') {
+      const replays = session.stats.replays;
+      lines.push(`ping ${Math.round(game.net.rtt)} ms`, `replays ${((replays - d.replays) / d.time).toFixed(1)}/s`,
+        `last error ${session.stats.lastError.toFixed(2)} m`, `snapshot age ${Math.round(session.snapshotAge * 1000)} ms`);
+      d.replays = replays;
+    }
+    this.hud.setDebug(lines.join('\n'));
+    d.time = 0;
+    d.frames = 0;
+  }
+
   get inIntro() {
     return !this.introSkipped && this.session.displayTick < RULES.introTicks;
   }
@@ -155,6 +181,7 @@ export default class RaceController {
     const net = session.kind === 'online' ? { state: game.net.state, rtt: game.net.rtt, stale: session.snapshotAge > STALE_SNAPSHOT_SECONDS } : null;
     this.hud.update(frames, { displayTick: session.displayTick, goTick: session.goTick, introTicks: RULES.introTicks, phase: session.phase, net });
     this.countdownSounds();
+    if (this.debug) this.updateDebug(dt, me);
 
     if (me) {
       const speedRatio = Math.min(1, me.speed / me.maxSpeed);

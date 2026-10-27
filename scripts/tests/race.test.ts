@@ -336,3 +336,35 @@ test('a car slammed sideways into a barrier at 60 m/s does not tunnel through', 
   assert.ok(Math.abs(lateral) < track.width / 2 + 0.5, `stayed inside (${lateral.toFixed(2)}m)`);
   sim.dispose();
 });
+
+test('Phantom E at 300 km/h never ends up inside or past a barrier, at any angle', async () => {
+  const sim = await RaceSimulation.create(config({ participants: [{ id: 'p1', name: 'Player', vehicleId: 'phantom-e', kind: 'human' }] }));
+  const car = sim.carsById.get('p1')!;
+  skipToGo(sim);
+  // Chassis half-width is 0.89 m and the barrier's inner face sits 0.4 m past the road edge.
+  const limit = track.width / 2 + 0.4;
+  const failures: string[] = [];
+  for (const checkpoint of [1, 3, 5]) {
+    const s = track.samples[track.checkpoints[checkpoint].sample];
+    for (const degrees of [10, 45, 90]) {
+      for (const side of [1, -1]) {
+        const angle = THREE_DEG * degrees;
+        // Heading between "along the road" and "straight at the barrier on `side`".
+        const dx = s.tx * Math.cos(angle) + s.nx * side * Math.sin(angle);
+        const dz = s.tz * Math.cos(angle) + s.nz * side * Math.sin(angle);
+        car.physics.teleport({ x: s.x, y: s.y + 0.9, z: s.z }, Math.atan2(-dx, -dz), 83);
+        let worst = 0;
+        for (let i = 0; i < 90; i++) {
+          sim.setInput('p1', { ...NEUTRAL_INPUT, throttle: 1 });
+          sim.step();
+          worst = Math.max(worst, Math.abs(car.lateral));
+        }
+        if (worst > limit) failures.push(`cp${checkpoint} ${degrees}° side ${side}: ${worst.toFixed(2)} m`);
+      }
+    }
+  }
+  assert.deepEqual(failures, []);
+  sim.dispose();
+});
+
+const THREE_DEG = Math.PI / 180;

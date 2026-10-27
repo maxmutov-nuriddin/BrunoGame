@@ -149,7 +149,7 @@ export default class LobbyScreen {
       </li>`)
       .join('') + (room.botSlots ? `<li class="is-bot"><b>+${room.botSlots} bot${room.botSlots === 1 ? '' : 's'}</b><small>fill the empty slots</small></li>` : '');
 
-    // Quick play: no invite, no host settings, no ready/start; the server starts the race by itself.
+    // Quick play: no invite, no host settings, no ready/start; the room starts the race by itself.
     this.el.classList.toggle('is-public', Boolean(room.public));
     $(this.el, '[data-title]').textContent = room.public ? 'Quick race' : 'Private room';
     if (room.public) this.startCountdownTicker();
@@ -189,7 +189,9 @@ export default class LobbyScreen {
     start.hidden = !host;
     start.disabled = !allReady || room.state === 'loading' || room.state === 'racing';
     const status = room.state === 'loading' ? 'Loading race…' : room.state === 'racing' ? 'Race in progress' : host ? (allReady ? 'Everyone is ready.' : 'Waiting for everyone to be ready…') : me?.ready ? 'Waiting for the host to start…' : 'Press Ready when you are set.';
-    $(this.el, '[data-status]').textContent = room.public ? this.publicStatus() : status;
+    // The room lives in the hosting browser: say so, since leaving (or closing the tab) ends it for everyone.
+    const hostingNote = this.game.online.hosting ? ' · You host this room: keep this tab open; leaving closes it for everyone.' : '';
+    $(this.el, '[data-status]').textContent = (room.public ? this.publicStatus() : status) + hostingNote;
     if (room.public) {
       ready.hidden = true;
       start.hidden = true;
@@ -207,7 +209,7 @@ export default class LobbyScreen {
   startCountdownTicker() {
     if (this.ticker) return;
     this.ticker = setInterval(() => {
-      if (this.room?.public) $(this.el, '[data-status]').textContent = this.publicStatus();
+      if (this.room?.public) $(this.el, '[data-status]').textContent = this.publicStatus() + (this.game.online.hosting ? ' · You host this room: keep this tab open.' : '');
     }, 250);
   }
 

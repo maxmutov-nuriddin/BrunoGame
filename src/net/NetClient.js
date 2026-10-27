@@ -7,31 +7,23 @@ const CLOCK_SNAP_MS = 250;
 const SESSION_KEY = 'bruno-race:session';
 const PING_INTERVAL_MS = 1000;
 const CLOCK_SAMPLES = 10;
-const RECONNECT_DELAYS = [500, 1000, 2000, 3000, 5000, 5000, 8000];
-const CONNECT_TIMEOUT_MS = 6000;
-const DEFAULT_PORT = 8787;
-
-/** Where the multiplayer server lives: settings override, then build-time env, then same host on :8787. */
-export function serverUrl(settings) {
-  const override = settings.get('serverUrl') || import.meta.env.VITE_SERVER_URL || '';
-  if (override) return override.replace(/\/$/, '').replace(/^http/, 'ws') + (override.endsWith('/ws') ? '' : '/ws');
-  const secure = window.location.protocol === 'https:';
-  return `${secure ? 'wss' : 'ws'}://${window.location.hostname || 'localhost'}:${DEFAULT_PORT}/ws`;
-}
-
-function healthUrl(wsUrl) {
-  return wsUrl.replace(/^ws/, 'http').replace(/\/ws$/, '/health');
-}
+/** A host that is gone for good (tab closed) should be given up quickly. */
+const RECONNECT_DELAYS = [500, 1000, 2000, 3000, 5000];
+const CONNECT_TIMEOUT_MS = 20_000;
 
 /**
- * WebSocket session with clock sync and automatic resume. The resume token lives in sessionStorage
- * (per tab), never in the URL.
+ * A session with the game host over any link: the in-page loopback when this browser hosts, otherwise
+ * a WebRTC data channel or the mailbox relay (see src/net/p2p). Clock sync and automatic resume work the
+ * same for all of them. The resume token lives in sessionStorage (per tab), never in a URL.
  */
 export default class NetClient extends EventTarget {
   constructor(settings) {
     super();
     this.settings = settings;
-    this.ws = null;
+    this.link = null;
+    /** () => Promise<link>; set with useLink before connecting. */
+    this.dial = null;
+    this.linkKey = '';
     this.state = 'offline';
     this.playerId = null;
     this.clockOffset = 0;
@@ -74,9 +66,20 @@ export default class NetClient extends EventTarget {
     }
   }
 
+  /** Where the next connect goes. `key` names the host (resume tokens only work with the same one). */
+  useLink(dial, key) {
+    this.dial = dial;
+    this.linkKey = key;
+  }
+
+  /** How the current link travels: 'local', 'direct' or 'relay' (null when not linked). */
+  get linkKind() {
+    return this.link?.kind ?? null;
+  }
+
   storeSession(token) {
     try {
-      window.sessionStorage.setItem(SESSION_KEY, JSON.stringify({ token, url: serverUrl(this.settings) }));
+      window.sessionStorage.setItem(SESSION_KEY, JSON.stringify({ token, key: this.linkKey }));
     } catch {
       // Without storage a reload simply starts a fresh session.
     }
@@ -90,84 +93,82 @@ export default class NetClient extends EventTarget {
     }
   }
 
-  /** Reachability check before trying a socket, so offline users get a clear message quickly. */
-  async checkHealth() {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    try {
-      const response = await fetch(healthUrl(serverUrl(this.settings)), { signal: controller.signal, cache: 'no-store' });
-      const body = await response.json();
-      return { ok: response.ok && body.ok === true, protocolMatches: body.protocol === PROTOCOL_VERSION };
-    } catch {
-      return { ok: false, protocolMatches: false };
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
   connect() {
     this.wantConnected = true;
-    if (this.ws && (this.state === 'connected' || this.state === 'connecting')) return this.ready;
+    if (this.link && (this.state === 'connected' || this.state === 'connecting')) return this.ready;
+    if (!this.dial) return Promise.reject(new Error('Not linked to a game host.'));
     this.setState(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
+    const key = this.linkKey;
     this.ready = new Promise((resolve, reject) => {
-      const url = serverUrl(this.settings);
       let settled = false;
-      const ws = new WebSocket(url);
-      this.ws = ws;
       const timeout = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          ws.close();
-          reject(new Error('Could not reach the multiplayer server.'));
-        }
+        if (settled) return;
+        settled = true;
+        this.link?.close();
+        reject(new Error('Could not reach the game host.'));
       }, CONNECT_TIMEOUT_MS);
+      const failed = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error instanceof Error ? error : new Error('Could not reach the game host.'));
+      };
 
-      ws.addEventListener('open', () => {
-        const session = this.storedSession();
-        if (session?.token && session.url === url) this.sendNow({ type: 'resume', v: PROTOCOL_VERSION, token: session.token });
-        else this.sendHello();
-      });
-      ws.addEventListener('message', (event) => {
-        let message;
-        try {
-          message = JSON.parse(event.data);
-        } catch {
+      this.dial().then((link) => {
+        if (settled || this.linkKey !== key) {
+          link.close();
           return;
         }
-        if (message.type === 'welcome') {
-          this.playerId = message.playerId;
-          this.storeSession(message.token);
-          this.reconnectAttempt = 0;
-          this.setState('connected');
-          this.startPinging();
-          if (!settled) {
-            settled = true;
-            clearTimeout(timeout);
-            resolve(message);
+        this.link = link;
+        link.onmessage = (text) => {
+          let message;
+          try {
+            message = JSON.parse(text);
+          } catch {
+            return;
           }
-        } else if (message.type === 'error' && message.code === 'resume-failed') {
+          if (message.type === 'welcome') {
+            this.playerId = message.playerId;
+            this.storeSession(message.token);
+            this.reconnectAttempt = 0;
+            this.setState('connected');
+            this.startPinging();
+            if (!settled) {
+              settled = true;
+              clearTimeout(timeout);
+              resolve(message);
+            }
+          } else if (message.type === 'error' && message.code === 'resume-failed') {
+            this.clearSession();
+            this.sendHello();
+          } else if (message.type === 'pong') {
+            this.onPong(message);
+          } else if (message.type === 'raceStart') {
+            // Kept so a race view created a moment later (e.g. after a reconnect) still gets its clock.
+            this.lastRaceStart = message;
+          }
+          this.dispatchEvent(new CustomEvent(message.type, { detail: message }));
+          this.dispatchEvent(new CustomEvent('message', { detail: message }));
+        };
+        link.onclose = () => {
+          this.stopPinging();
+          if (this.link !== link) return;
+          this.link = null;
+          failed(new Error('The connection to the host closed.'));
+          if (this.wantConnected && this.storedSession()?.key === key) this.scheduleReconnect();
+          else this.setState('offline');
+        };
+        const session = this.storedSession();
+        if (session?.token && session.key === key) this.sendNow({ type: 'resume', v: PROTOCOL_VERSION, token: session.token });
+        else this.sendHello();
+      }, (error) => {
+        failed(error);
+        if (error?.fatal) {
+          this.wantConnected = false;
           this.clearSession();
-          this.sendHello();
-        } else if (message.type === 'pong') {
-          this.onPong(message);
-        } else if (message.type === 'raceStart') {
-          // Kept so a race view created a moment later (e.g. after a reconnect) still gets its clock.
-          this.lastRaceStart = message;
-        }
-        this.dispatchEvent(new CustomEvent(message.type, { detail: message }));
-        this.dispatchEvent(new CustomEvent('message', { detail: message }));
-      });
-      ws.addEventListener('close', () => {
-        clearTimeout(timeout);
-        this.stopPinging();
-        if (this.ws !== ws) return;
-        this.ws = null;
-        if (!settled) {
-          settled = true;
-          reject(new Error('Could not reach the multiplayer server.'));
-        }
-        if (this.wantConnected && this.storedSession()) this.scheduleReconnect();
-        else this.setState('offline');
+          this.setState('offline');
+          this.dispatchEvent(new CustomEvent('gaveUp', { detail: error.message }));
+        } else if (this.wantConnected && this.reconnectAttempt > 0) this.scheduleReconnect();
       });
     });
     return this.ready;
@@ -187,12 +188,12 @@ export default class NetClient extends EventTarget {
       return;
     }
     setTimeout(() => {
-      if (this.wantConnected && !this.ws) this.connect().catch(() => {});
+      if (this.wantConnected && !this.link) this.connect().catch(() => {});
     }, delay);
   }
 
   sendNow(message) {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(message));
+    this.link?.send(JSON.stringify(message));
   }
 
   send(message) {
@@ -228,13 +229,16 @@ export default class NetClient extends EventTarget {
     this.dispatchEvent(new CustomEvent('latency', { detail: this.rtt }));
   }
 
-  /** Leave for good: tell the server, drop the resume token. */
+  /** Leave for good: close the link, drop the resume token. */
   disconnect() {
     this.wantConnected = false;
     this.clearSession();
     this.stopPinging();
-    this.ws?.close();
-    this.ws = null;
+    const link = this.link;
+    this.link = null;
+    link?.close();
+    this.dial = null;
+    this.linkKey = '';
     this.setState('offline');
   }
 }

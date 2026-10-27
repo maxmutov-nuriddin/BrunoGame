@@ -21,6 +21,11 @@ const CHASSIS_OFFSET_Y = 0.18;
 const CABIN_MASS = 100;
 const REFERENCE_MASS = 1250;
 const SOFT_CCD_DISTANCE = 1.5;
+/**
+ * Hard CCD switches on above this speed (m/s): a 300 km/h car covers 1.4 m per tick, more than soft CCD
+ * catches. It costs ~15× a normal physics step against the trimesh barriers, so slower cars never pay for it.
+ */
+const HARD_CCD_SPEED = 45;
 const CHASSIS_FRICTION = 0.12;
 
 export const NITRO_CAPACITY = 100;
@@ -207,6 +212,8 @@ export default class VehiclePhysics {
     this.reversing = throttle < 0 && this.forwardSpeed < 1;
     this.braking = rules.frozen || (throttle < 0 && this.forwardSpeed >= 1) || (throttle > 0 && this.forwardSpeed < -1);
 
+    const fast = this.speed > HARD_CCD_SPEED;
+    if (fast !== this.body.isCcdEnabled()) this.body.enableCcd(fast);
     this.updateNitro(input, dt, rules);
     this.updateDrift(input, dt, rules);
 

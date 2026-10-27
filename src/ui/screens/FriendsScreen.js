@@ -1,7 +1,7 @@
 import { html, onAction, $ } from '../dom.js';
 import { sanitizeName, isRoomCode } from '../../../shared/net/protocol.ts';
 
-/** Name, server status, create room or join by code. */
+/** Name, create a room (this browser hosts it) or join a friend's by code. */
 export default class FriendsScreen {
   constructor(game, { onBack, prefillCode = '' }) {
     this.game = game;
@@ -13,7 +13,7 @@ export default class FriendsScreen {
         </header>
         <div class="panel friends__panel">
           <label class="field">Your name <input data-name maxlength="16" autocomplete="nickname" /></label>
-          <p class="status-line" data-status>Checking the multiplayer server…</p>
+          <p class="status-line" data-status></p>
           <div class="friends__actions">
             <button class="btn btn--primary btn--big" data-act="create">Create room</button>
             <div class="join">
@@ -21,7 +21,7 @@ export default class FriendsScreen {
               <button class="btn btn--big" data-act="join">Join</button>
             </div>
           </div>
-          <p class="muted">Online races need an internet connection and a running multiplayer server. Solo races work offline.</p>
+          <p class="muted">The room is hosted in the creator's browser: keep this tab open while friends play. Solo races work offline.</p>
         </div>
       </section>`);
     this.nameInput = $(this.el, '[data-name]');
@@ -34,16 +34,16 @@ export default class FriendsScreen {
     });
     onAction(this.el, {
       back: () => onBack(),
-      create: () => this.go({ type: 'createRoom' }),
+      create: () => this.go(() => game.online.hostRoom(false), 'Opening your room…'),
       join: () => {
         const code = this.codeInput.value.trim().toUpperCase();
         if (!isRoomCode(code)) return this.setStatus('Room codes are 6 letters/numbers.', true);
-        this.go({ type: 'joinRoom', code });
+        this.go(() => game.online.joinByCode(code), 'Connecting to the host…');
       }
     }, (act) => game.audio.play(act === 'back' ? 'uiBack' : 'ui'));
     game.screens.appendChild(this.el);
-    this.checkServer();
-    if (prefillCode && isRoomCode(prefillCode)) this.go({ type: 'joinRoom', code: prefillCode });
+    this.showAvailability();
+    if (prefillCode && isRoomCode(prefillCode)) this.go(() => game.online.joinByCode(prefillCode), 'Connecting to the host…');
   }
 
   setStatus(text, bad = false) {
@@ -51,25 +51,22 @@ export default class FriendsScreen {
     this.status.classList.toggle('is-bad', bad);
   }
 
-  async checkServer() {
-    if (!navigator.onLine) return this.setStatus('You are offline. Online races need internet.', true);
-    const health = await this.game.net.checkHealth();
-    if (!this.el.isConnected) return;
-    if (!health.ok) this.setStatus('Multiplayer server unreachable. Start it with npm run dev:server, or set its URL in Settings.', true);
-    else if (!health.protocolMatches) this.setStatus('Server version differs from this client. Reload or update.', true);
-    else this.setStatus('Server online.');
+  showAvailability() {
+    const { online } = this.game;
+    if (!online.available) this.setStatus('Online play is not set up on this site yet (Firebase settings missing).', true);
+    else if (!navigator.onLine) this.setStatus('You are offline. Online races need internet.', true);
+    else if (online.kind === 'local') this.setStatus('Dev mode: rooms are shared between tabs of this browser only.');
+    else this.setStatus('Ready to play online.');
   }
 
-  async go(message) {
+  async go(action, label) {
     const name = sanitizeName(this.nameInput.value);
     if (!name) return this.setStatus('Names: 1–16 letters, digits, space, _ . -', true);
+    if (!this.game.online.available) return this.showAvailability();
     this.game.settings.set('name', name);
-    this.setStatus('Connecting…');
+    this.setStatus(label);
     try {
-      await this.game.net.connect();
-      this.game.net.send({ type: 'setName', name });
-      this.game.net.send({ type: 'setVehicle', vehicleId: this.game.settings.get('vehicleId') });
-      this.game.net.send(message);
+      await action();
     } catch (error) {
       this.setStatus(error.message, true);
     }

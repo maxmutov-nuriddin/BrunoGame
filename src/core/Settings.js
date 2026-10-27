@@ -38,7 +38,6 @@ const defaults = () => ({
   rearMirror: true,
   volume: { master: 0.8, music: 0.5, sfx: 0.8 },
   bindings: structuredClone(DEFAULT_BINDINGS),
-  serverUrl: '',
   unlockedVehicles: []
 });
 
@@ -108,7 +107,6 @@ function migrate(stored) {
       sfx: clamp01(stored.volume?.sfx, base.volume.sfx)
     },
     bindings,
-    serverUrl: typeof stored.serverUrl === 'string' ? stored.serverUrl.slice(0, 200) : '',
     unlockedVehicles
   };
 }

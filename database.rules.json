@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "mail": {
+      "$to": {
+        ".read": "auth != null && auth.uid === $to",
+        ".write": "auth != null && auth.uid === $to",
+        "$message": {
+          ".write": "auth != null && (auth.uid === $to || (!data.exists() && newData.child('from').val() === auth.uid))",
+          ".validate": "newData.hasChildren(['from', 'p', 'at']) && newData.child('p').isString() && newData.child('p').val().length < 100000 && newData.child('at').val() <= now"
+        }
+      }
+    }
+  }
+}

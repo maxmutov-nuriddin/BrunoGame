@@ -10,6 +10,26 @@ const triangleKey = (mesh) => {
 };
 
 /**
+ * Quantized (meshopt / KHR_mesh_quantization) attributes back to plain Float32, in place. The dequantizing
+ * scale stays on the mesh node, so nothing moves; merging and baking below then work on ordinary floats.
+ */
+export function dequantize(root) {
+  root.traverse((node) => {
+    if (!node.isMesh) return;
+    const { geometry } = node;
+    for (const [name, attribute] of Object.entries(geometry.attributes)) {
+      if (attribute.array instanceof Float32Array && !attribute.normalized && !attribute.isInterleavedBufferAttribute) continue;
+      const { count, itemSize } = attribute;
+      const floats = new Float32Array(count * itemSize);
+      for (let i = 0; i < count; i++) {
+        for (let j = 0; j < itemSize; j++) floats[i * itemSize + j] = attribute.getComponent(i, j);
+      }
+      geometry.setAttribute(name, new THREE.BufferAttribute(floats, itemSize));
+    }
+  });
+}
+
+/**
  * Merge every static mesh under `root` that shares a material into one mesh (one draw call per material).
  * Subtrees for which `exclude` returns true are left alone, as are meshes with children, so animated parts
  * (wheels) can be merged separately inside their own node.

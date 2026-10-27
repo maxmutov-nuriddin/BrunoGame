@@ -1,8 +1,9 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { LoadingManager } from 'three';
 import { VEHICLES } from '../shared/vehicles.ts';
 import { WORLD_PACK_DIR, WORLD_PACK_FILES, worldResourceName } from './worldPack.js';
-import { optimizeCar, optimizeGrassTile } from './modelOptimizer.js';
+import { dequantize, optimizeCar, optimizeGrassTile } from './modelOptimizer.js';
 
 /** Loads every car and world-pack model; progress events reflect files actually loaded. */
 export default class Resources extends EventTarget {
@@ -28,11 +29,13 @@ export default class Resources extends EventTarget {
     const total = sources.length;
     let loaded = 0;
     const manager = new LoadingManager();
-    const loader = new GLTFLoader(manager);
+    // Models ship meshopt-compressed (scripts/compress-models.mjs): about a quarter of the raw size.
+    const loader = new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder);
     await Promise.all(
       sources.map((source) =>
         loader.loadAsync(source.path).then((gltf) => {
           // Fewer draw calls and vertices for every later use (showroom, every car and tile in a race).
+          dequantize(gltf.scene);
           source.optimize?.(gltf.scene);
           this.items[source.name] = gltf;
           loaded += 1;

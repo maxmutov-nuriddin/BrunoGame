@@ -7,6 +7,16 @@ import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import SpeedBlurPass from '../Effects/SpeedBlurPass.js';
 
+/** Dynamic resolution: frame-time smoothing, thresholds (× frame budget), dwell times (s) and steps. */
+const FRAME_TIME_SMOOTHING = 0.05;
+const SLOW_FRAME_FACTOR = 1.15;
+const FAST_FRAME_FACTOR = 1.05;
+const SLOW_SECONDS_BEFORE_DROP = 2;
+const FAST_SECONDS_BEFORE_RAISE = 5;
+const RESOLUTION_MIN = 0.6;
+const RESOLUTION_STEP_DOWN = 0.1;
+const RESOLUTION_STEP_UP = 0.05;
+
 // Pixel ratio dominates GPU cost (2.0 is 4x the pixels of 1.0), so even High stays at 1.5.
 const QUALITY = {
   low: { pixelRatio: 1, shadows: false, shadowMap: 512, bloom: false, depthOfField: false },
@@ -127,7 +137,7 @@ export default class Renderer {
   resize() {
     const width = window.innerWidth;
     const height = window.innerHeight;
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, this.preset?.pixelRatio ?? 2);
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, this.preset?.pixelRatio ?? 2) * (this.resolutionScale ?? 1);
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.setSize(width, height);
     this.composer.setPixelRatio(pixelRatio);
@@ -136,6 +146,32 @@ export default class Renderer {
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * Dynamic resolution: when frames keep missing `targetFps`, render fewer pixels (down to
+   * RESOLUTION_MIN of the quality preset); when there is headroom again, creep back up.
+   */
+  adaptResolution(delta, targetFps) {
+    if (delta <= 0) return;
+    this.resolutionScale ??= 1;
+    this.frameTime = this.frameTime === undefined ? delta : this.frameTime + (delta - this.frameTime) * FRAME_TIME_SMOOTHING;
+    const budget = 1 / targetFps;
+    if (this.frameTime > budget * SLOW_FRAME_FACTOR) {
+      this.slowFor = (this.slowFor ?? 0) + delta;
+      this.fastFor = 0;
+    } else if (this.frameTime < budget * FAST_FRAME_FACTOR) {
+      this.fastFor = (this.fastFor ?? 0) + delta;
+      this.slowFor = 0;
+    }
+    let scale = this.resolutionScale;
+    if (this.slowFor > SLOW_SECONDS_BEFORE_DROP && scale > RESOLUTION_MIN) scale = Math.max(RESOLUTION_MIN, scale - RESOLUTION_STEP_DOWN);
+    else if (this.fastFor > FAST_SECONDS_BEFORE_RAISE && scale < 1) scale = Math.min(1, scale + RESOLUTION_STEP_UP);
+    if (scale === this.resolutionScale) return;
+    this.resolutionScale = scale;
+    this.slowFor = 0;
+    this.fastFor = 0;
+    this.resize();
   }
 
   render(delta) {

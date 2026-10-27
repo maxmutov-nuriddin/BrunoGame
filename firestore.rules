@@ -1,0 +1,66 @@
+rules_version = '2';
+
+// Nitro Clash. Deploy with: firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Lobby directory: rooms hosted in players' browsers (see shared/lobby/directory.ts).
+    match /lobbies/{code} {
+      allow get, list: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.code == code
+        && request.resource.data.players is int && request.resource.data.players <= 8
+        && request.resource.data.maxPlayers is int && request.resource.data.maxPlayers <= 8
+        && request.resource.data.reservations == {};
+      // The host may change its own entry, but never hand it to someone else.
+      // Anyone else may only add or remove their own seat reservation.
+      allow update: if signedIn() && (
+        (resource.data.hostId == request.auth.uid && request.resource.data.hostId == request.auth.uid
+          && request.resource.data.code == code)
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reservations'])
+          && request.resource.data.reservations.diff(resource.data.reservations).affectedKeys().hasOnly([request.auth.uid]))
+      );
+      allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
+    }
+
+    // Promo codes: document id = salted SHA-256 of the code (src/core/promo.js), field vehicleId.
+    // Single reads only, so nobody can list the codes; created by hand in the Firebase console.
+    match /promoCodes/{hash} {
+      allow get: if signedIn();
+      allow list, write: if false;
+    }
+
+    // Player profiles. Unlocked cars can only grow, one at a time, through an existing promo code.
+    match /users/{uid} {
+      function validProfile() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['name', 'vehicleId', 'unlockedVehicles', 'lastPromo'])
+          && (!('name' in d) || (d.name is string && d.name.size() <= 16))
+          && (!('vehicleId' in d) || (d.vehicleId is string && d.vehicleId.size() <= 32))
+          && (!('unlockedVehicles' in d) || (d.unlockedVehicles is list && d.unlockedVehicles.size() <= 20));
+      }
+      function unlocksAllowed() {
+        let before = resource.data.get('unlockedVehicles', []);
+        let after = request.resource.data.get('unlockedVehicles', []);
+        let promo = request.resource.data.get('lastPromo', '');
+        return after.hasAll(before) && (
+          after.size() == before.size()
+          || (after.size() == before.size() + 1
+            && promo is string && promo.size() == 64
+            && exists(/databases/$(database)/documents/promoCodes/$(promo))
+            && after.hasAll([get(/databases/$(database)/documents/promoCodes/$(promo)).data.vehicleId]))
+        );
+      }
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid && validProfile()
+        && request.resource.data.get('unlockedVehicles', []).size() == 0;
+      allow update: if signedIn() && request.auth.uid == uid && validProfile() && unlocksAllowed();
+      allow list, delete: if false;
+    }
+  }
+}

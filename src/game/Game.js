@@ -7,6 +7,8 @@ import Input from '../core/Input.js';
 import Renderer from '../core/Renderer.js';
 import AudioEngine from '../audio/AudioEngine.js';
 import NetClient from '../net/NetClient.js';
+import OnlineService from '../net/OnlineService.js';
+import AccountSync from '../net/AccountSync.js';
 import Resources from '../Resources.js';
 import Showroom from '../scenes/Showroom.js';
 import LocalRaceSession from '../race/LocalRaceSession.js';
@@ -24,6 +26,9 @@ import SettingsModal from '../ui/SettingsModal.js';
 import { formatTime } from '../ui/format.js';
 import { html } from '../ui/dom.js';
 import { onUpdateAvailable, applyUpdate, seedOfflineCache } from '../Network.js';
+
+/** Dynamic resolution aims for this frame rate when the frame rate is uncapped. */
+const UNCAPPED_TARGET_FPS = 60;
 
 const BOT_NAMES = ['Vex', 'Ronan', 'Kira', 'Taro', 'Mila', 'Juno', 'Axel', 'Nadia', 'Orion', 'Suki'];
 const TOAST_MS = 2600;
@@ -60,6 +65,8 @@ export default class Game {
     this.input = new Input(this.settings);
     this.audio = new AudioEngine(this.settings);
     this.net = new NetClient(this.settings);
+    this.online = new OnlineService(this.net, this.settings);
+    this.accountSync = new AccountSync(this.online, this.settings);
     this.renderer = new Renderer(this.canvasHost, this.settings.get('quality'));
     this.renderer.setReducedMotion(this.settings.get('reducedMotion'));
     this.room = null;
@@ -99,6 +106,7 @@ export default class Game {
     this.showroom.showVehicle(this.settings.get('vehicleId'));
     this.setScene(this.showroom.scene, this.showroom.camera, true);
     seedOfflineCache();
+    this.accountSync.start();
     await loading.waitForStart();
     this.audio.unlock();
     loading.dispose();
@@ -112,9 +120,9 @@ export default class Game {
       window.history.replaceState(null, '', url);
       this.showFriends(invite.toUpperCase());
     } else if (this.net.storedSession()) {
-      // A reload mid-session: try to resume our seat; the server tells us where we were.
+      // A guest reloading mid-session re-links to the same host and resumes the seat; a reloaded host's room is gone.
       this.showMenu();
-      this.net.connect().catch(() => this.net.disconnect());
+      this.online.resume(this.net.storedSession().key).catch(() => this.net.disconnect());
     } else {
       this.showMenu();
     }
@@ -136,10 +144,15 @@ export default class Game {
     this.net.addEventListener('state', (event) => {
       if (event.detail === 'reconnecting') this.toast('Connection lost · reconnecting…', true);
     });
-    this.net.addEventListener('gaveUp', () => {
-      this.toast('Could not reconnect to the server.', true);
+    this.net.addEventListener('gaveUp', (event) => {
+      this.toast(event.detail || 'Lost the connection to the host.', true);
+      const wasPublic = this.room?.public;
       this.room = null;
-      if (this.state instanceof RaceController && this.state.session.kind === 'online') this.endState(() => this.showFriends());
+      void this.online.leave();
+      // The host is gone (rooms live in the host's browser): back to where a new game can be found.
+      const back = () => (wasPublic ? this.showOnline() : this.showFriends());
+      if (this.state instanceof RaceController && this.state.session.kind === 'online') this.endState(back);
+      else if (this.screenName === 'lobby' || this.screenName === 'results') back();
     });
   }
 
@@ -163,6 +176,7 @@ export default class Game {
       // Results over a finished race: keep the scene alive behind the screen.
       this.state.update(dt);
     }
+    this.renderer.adaptResolution(dt, this.settings.get('fpsCap') || UNCAPPED_TARGET_FPS);
     this.renderer.render(dt);
   }
 
@@ -247,14 +261,15 @@ export default class Game {
 
   leaveRoom() {
     const wasPublic = this.room?.public;
-    this.net.send({ type: 'leaveRoom' });
+    // Peer-to-peer: a guest drops its link; a host closes the room for everyone.
+    void this.online.leave();
     this.room = null;
     if (wasPublic) this.showOnline();
     else this.showFriends();
   }
 
   leaveOnline() {
-    if (this.net.connected && !this.room) this.net.disconnect();
+    if (!this.room) void this.online.leave();
     this.showMenu();
   }
 
@@ -345,7 +360,7 @@ export default class Game {
       results: results ?? [], localId: setup.youId, mode: 'race', online: true, quickPlay,
       onNextRace: () => {
         // A quick-play room is locked after its race: leave it and search for the next one.
-        this.net.send({ type: 'leaveRoom' });
+        void this.online.leave();
         this.room = null;
         this.endState(() => this.showOnline(true));
       },

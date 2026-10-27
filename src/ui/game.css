@@ -227,6 +227,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; padding: 
 .minimap { width: 190px; height: 190px; }
 .hud-net { position: absolute; right: 28px; top: 214px; font: 600 0.75rem 'Avenir Next', sans-serif; padding: 4px 10px; border-radius: 99px; background: rgba(10, 12, 20, 0.6); color: var(--good); }
 .hud-net.is-bad { color: var(--bad); }
+.hud-debug { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); margin: 0; padding: 8px 12px; border-radius: 8px; background: rgba(0, 0, 0, 0.7); color: #9ff3ff; font: 12px/1.4 ui-monospace, monospace; pointer-events: none; }
 .hud-dash { position: absolute; right: 26px; bottom: 22px; display: flex; gap: 16px; align-items: flex-end; }
 .hud-speed { text-align: right; transform: skewX(var(--slant)); }
 .hud-speed b { display: block; font: italic 900 clamp(3rem, 7vw, 4.6rem)/0.9 var(--display); text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6); }

@@ -1,0 +1,31 @@
+# Nitro Clash on Netlify: a static site. Online play uses Firebase (set the VITE_FIREBASE_* variables in
+# Site settings → Environment variables; see .env.example and the README).
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "24"
+
+# Hashed bundles never change: cache for a year.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Models keep their names across releases; the service worker re-fetches them on each new version.
+[[headers]]
+  for = "/models/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+# The page and the service worker must always be checked, or players get stuck on an old version.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"

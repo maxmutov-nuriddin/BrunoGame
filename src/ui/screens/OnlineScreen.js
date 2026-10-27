@@ -8,6 +8,7 @@ const COUNTDOWN_REFRESH_MS = 200;
 /**
  * Quick play: press Start to search, a found match must be accepted with "Ready" within its time limit,
  * then the game switches to the public room. Missing the limit stops the search (Start to look again).
+ * With no open race to join, this browser hosts one and waits for players (see OnlineService).
  */
 export default class OnlineScreen {
   constructor(game, { onBack, autoStart = false }) {
@@ -40,9 +41,10 @@ export default class OnlineScreen {
       </section>`);
     this.nameInput = $(this.el, '[data-name]');
     this.nameInput.value = game.settings.get('name');
+    this.online = game.online;
     onAction(this.el, {
       back: () => {
-        this.cancel();
+        void this.online.leave();
         onBack();
       },
       start: () => this.start(),
@@ -50,16 +52,12 @@ export default class OnlineScreen {
       accept: () => this.accept()
     }, (act) => game.audio.play(act === 'back' || act === 'cancel' ? 'uiBack' : 'ui'));
 
-    this.listeners = {
-      queueStatus: (event) => this.setSearching(event.detail.searching),
-      matchFound: (event) => this.showOffer(event.detail),
-      matchExpired: (event) => this.offerExpired(event.detail.offerId)
-    };
-    for (const [type, listener] of Object.entries(this.listeners)) game.net.addEventListener(type, listener);
     game.screens.appendChild(this.el);
     this.setSearching(false);
-    this.setStatus(navigator.onLine ? 'Press Start to find a race.' : 'You are offline. Online races need internet.', !navigator.onLine);
-    if (autoStart) this.start();
+    if (!this.online.available) this.setStatus('Online play is not set up on this site yet (Firebase settings missing).', true);
+    else if (!navigator.onLine) this.setStatus('You are offline. Online races need internet.', true);
+    else this.setStatus(this.online.kind === 'local' ? 'Dev mode: other tabs of this browser are your opponents. Press Start.' : 'Press Start to find a race.');
+    if (autoStart && this.online.available) this.start();
   }
 
   setStatus(text, bad = false) {
@@ -79,21 +77,36 @@ export default class OnlineScreen {
     const name = sanitizeName(this.nameInput.value);
     if (!name) return this.setStatus('Names: 1–16 letters, digits, space, _ . -', true);
     this.game.settings.set('name', name);
-    this.setStatus('Connecting…');
+    this.setSearching(true);
+    this.setStatus('Searching for a race…');
     try {
-      await this.game.net.connect();
-      this.game.net.send({ type: 'setName', name });
-      this.game.net.send({ type: 'setVehicle', vehicleId: this.game.settings.get('vehicleId') });
-      this.game.net.send({ type: 'queueJoin' });
+      await this.online.startQuickPlay((event) => this.onQuickPlay(event));
     } catch (error) {
-      this.setStatus(`${error.message} Is the multiplayer server running?`, true);
+      this.setSearching(false);
+      this.setStatus(error.message, true);
+    }
+  }
+
+  onQuickPlay(event) {
+    if (!this.el.isConnected) return;
+    if (event.kind === 'offer') this.showOffer(event.offer);
+    else if (event.kind === 'expired') {
+      this.hideOffer();
+      this.setSearching(false);
+      this.setStatus('Match missed: you did not press Ready in time. Press Start to search again.', true);
+    } else if (event.kind === 'host') {
+      this.setStatus('No open race right now: you are hosting one. Waiting for players…');
+    } else if (event.kind === 'error') {
+      this.setSearching(false);
+      this.setStatus(event.message, true);
     }
   }
 
   cancel() {
-    if (this.searching || this.offer) this.game.net.send({ type: 'queueLeave' });
+    void this.online.cancelQuickPlay();
     this.hideOffer();
     this.setSearching(false);
+    this.setStatus('Search stopped. Press Start to look again.');
   }
 
   showOffer(offer) {
@@ -102,28 +115,27 @@ export default class OnlineScreen {
     $(this.el, '[data-offer]').hidden = false;
     $(this.el, '[data-act="accept"]').disabled = false;
     this.game.audio.play('countdown');
-    const total = Math.max(1, offer.expiresAt - this.game.net.serverNow());
+    const total = Math.max(1, offer.expiresAt - Date.now());
     clearInterval(this.timer);
     this.timer = setInterval(() => {
-      const left = Math.max(0, offer.expiresAt - this.game.net.serverNow());
+      const left = Math.max(0, offer.expiresAt - Date.now());
       $(this.el, '[data-offer-bar]').style.width = `${(left / total) * 100}%`;
       $(this.el, '[data-offer-seconds]').textContent = `${Math.ceil(left / 1000)} s`;
     }, COUNTDOWN_REFRESH_MS);
   }
 
-  accept() {
+  async accept() {
     if (!this.offer) return;
-    this.game.net.send({ type: 'matchAccept', offerId: this.offer.offerId });
     $(this.el, '[data-act="accept"]').disabled = true;
-    this.setStatus('Joining the room…');
-  }
-
-  offerExpired(offerId) {
-    if (this.offer?.offerId !== offerId) return;
-    const accepted = $(this.el, '[data-act="accept"]').disabled;
     this.hideOffer();
-    // Accepted but the room filled or started meanwhile: the server is already offering another one.
-    this.setStatus(accepted ? 'That room just filled up; finding another…' : 'Match missed: you did not press Ready in time. Press Start to search again.', !accepted);
+    this.setStatus('Joining the room…');
+    try {
+      await this.online.acceptOffer();
+    } catch (error) {
+      // The host left or filled up meanwhile: look again straight away.
+      this.setStatus(`${error.message} Finding another…`, true);
+      void this.start();
+    }
   }
 
   hideOffer() {
@@ -134,7 +146,6 @@ export default class OnlineScreen {
 
   dispose() {
     clearInterval(this.timer);
-    for (const [type, listener] of Object.entries(this.listeners)) this.game.net.removeEventListener(type, listener);
     this.el.remove();
   }
 }

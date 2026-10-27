@@ -1,11 +1,13 @@
-import { randomBytes } from 'node:crypto';
-import type { DriveInput } from '../shared/input.ts';
-import type { ServerMessage } from '../shared/net/protocol.ts';
-import type Room from './rooms/Room.ts';
+import { randomToken } from './random.ts';
+import type { DriveInput } from '../input.ts';
+import type { ServerMessage } from '../net/protocol.ts';
+import type Room from './Room.ts';
 
 export interface Transport {
   send(text: string): void;
   close(code?: number, reason?: string): void;
+  /** The host's own connection (same browser). Only it may create rooms. */
+  readonly local?: boolean;
 }
 
 export interface QueuedInput {
@@ -26,7 +28,7 @@ let nextPlayerId = 1;
 export default class Player {
   readonly id = `p${nextPlayerId++}`;
   /** Secret for resuming after a disconnect. Sent once, never placed in a URL. */
-  readonly token = randomBytes(24).toString('base64url');
+  readonly token = randomToken(24);
   name: string;
   vehicleId: string;
   ready = false;

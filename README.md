@@ -3,28 +3,31 @@
 A browser arcade combat racer inspired by the *feel* of games like Blur (grid, countdown, drifting, nitro,
 weapons, bots and private online races). All names, cars, tracks, UI, music and sound are original.
 
-Stack: three.js 0.179, Rapier 0.17 (compat build), Vite 6 and a Node.js + TypeScript authoritative server
-on `ws`. Sound is synthesised live with the Web Audio API.
+Stack: three.js 0.179, Rapier 0.17 (compat build), Vite 6, TypeScript shared simulation, and serverless
+online play (WebRTC between players, Firebase for finding rooms and accounts). Sound is synthesised live
+with the Web Audio API.
 
 ## Quick start
 
 ```bash
 npm install
-npm run dev:all        # client on http://localhost:5173 + multiplayer server on :8787
+npm run dev            # http://localhost:5173 — solo, and online between tabs of this browser
 ```
+
+No server to run: online rooms are hosted in a player's browser and found through Firebase
+(see [Online play and deployment](#online-play-and-deployment)). Without Firebase settings, `npm run dev`
+still lets you try online play between tabs of the same browser.
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Vite dev client only (solo and time trial work without a server) |
-| `npm run dev:server` | Multiplayer server with auto-reload (`tsx watch server/main.ts`) |
-| `npm run dev:all` | Both of the above together; Ctrl+C stops both |
-| `npm run build` | Production frontend in `dist/` (includes the generated `sw.js`) |
+| `npm run dev` | Vite dev client |
+| `npm run build` | Production build in `dist/` (includes the generated `sw.js`) — upload to Netlify |
 | `npm run preview` | Serve `dist/` locally (the only way to try offline mode) |
-| `npm run start:server` | Run the multiplayer server for production |
-| `npm test` | Type-check, then the vehicle, race and multiplayer suites |
+| `npm test` | Type-check, then the vehicle, race, lobby, peer-link and multiplayer suites |
 | `npm run test:vehicle` | Handling: acceleration, braking, steering, nitro, drift per car |
-| `npm run test:race` | Track generator, race rules, items, bots, finish/DNF |
-| `npm run test:multiplayer` | Real server + WebSocket clients: lobby, race, rematch, reconnect, 8 clients |
+| `npm run test:race` | Track generator, race rules, items, bots, finish/DNF, barriers at 300 km/h |
+| `npm run test:multiplayer` | The game host with in-memory links: lobby, race, rematch, reconnect, 8 clients, quick play |
+| `npm run model:cars` | Rebuild the car GLBs (meshopt-compressed) from `scripts/cars/` |
 | `npm run model:check` | Check car GLBs against the vehicle contract ([docs/VEHICLES.md](docs/VEHICLES.md)); no arguments = every car in `public/models` |
 | `npm run bench` | Simulation cost and snapshot size for an 8-car race |
 
@@ -65,7 +68,7 @@ Solo `Esc` pauses the simulation; online `Esc` only opens a local menu — the r
 ### Racing mechanics
 
 * **Launch:** press throttle 0.05–0.45 s before GO for a boost + nitro; holding it from more than 0.6 s
-  before GO bogs the engine. Online, the client may claim its press up to 4 ticks (~67 ms) before the server
+  before GO bogs the engine. Online, the client may claim its press up to 4 ticks (~67 ms) before the host
   received it (latency compensation); anything earlier is clamped.
 * **Drift:** handbrake above ~40 km/h while steering. Steering sets the yaw rate and throttle keeps
   momentum (arcade, not a sim). Releasing with throttle after a clean drift gives a small exit boost.
@@ -112,22 +115,26 @@ Twelve cars. 0–60 km/h and top speed (without nitro) measured on flat ground w
 
 **Promo car.** Phantom E (electric hypercar, 0–100 in 1.0 s, 300 km/h) is hidden from the garage, the lobby
 and the bots. Redeeming its promo code in Settings → Promo code unlocks it on that device (stored in
-localStorage). Only a salted SHA-256 hash of the code is in the source (`src/core/promo.js`). The server does
-not check unlocks yet, so this is a local unlock, not anti-cheat.
+localStorage) and, with Firebase, on the player's account. Only a salted SHA-256 hash of the code is in
+the source (`src/core/promo.js`). Online, the host does not check unlocks, so it is not anti-cheat.
 
 ## Architecture
 
 ```
-shared/        TypeScript used by both the browser and the server
+shared/        TypeScript used by the browser and the tests
   physics/     Rapier world wrapper, VehiclePhysics (ray-cast vehicle + arcade drift/nitro/air control)
   track/       seeded generator, validation, fallback track, colliders, racing line, presets
   race/        RaceSimulation (rules, laps, items, damage, respawn), bots, combat, events
   net/         protocol (strictly validated messages), compact snapshots
-server/        Node + ws: rooms, lobby state machine, 60 Hz authoritative races, reconnect
+  host/        HostServer: rooms, lobby state machine, 60 Hz authoritative races, reconnect —
+               runs in the hosting player's browser (and in tests)
+  lobby/       lobby directory contract and quick-play matching (10 s held seats)
 src/           browser client
   game/        top-level flow (Loading → Menu → … → Results)
   race/        local & online sessions, view, HUD, camera, effects, engine audio
-  core/ ui/ audio/ net/ scenes/
+  net/         NetClient (one session over any link), OnlineService, AccountSync,
+               backend/ (Firebase or the dev stand-in), p2p/ (WebRTC links, host session)
+  core/ ui/ audio/ scenes/
 ```
 
 **Tracks** come from one `TrackDefinition` (`shared/track/generator.ts` + `layouts.ts`,
@@ -149,48 +156,51 @@ grid, checkpoint order, pickups and the racing line; failing seeds retry determi
 (`seed|attempt`, up to 60 tries; none of 120 random seeds needed the fallback) and finally fall back to a
 hand-placed circuit. On an overpass, checkpoints and item boxes stay off the crossing, the car locator
 weighs height so a car below is never placed on the deck, and barriers under a deck stop 1.4 m below the
-road so the road beneath is open. Same seed + generator version → same track (tested by fingerprint). Online, the server sends the full definition so clients can never disagree.
+road so the road beneath is open. Same seed + generator version → same track (tested by fingerprint). Online, the host sends the full definition so clients can never disagree.
 
-**Multiplayer** is server-authoritative. Clients send only inputs (`[seq, tick, throttle, steer, buttons]`,
-30 Hz batches); the server runs physics at 60 Hz and sends 20 Hz snapshots with the last applied input
-`ack`. The local car is predicted in a client-side Rapier world and reconciled (rewind to the server state
-for `ack`, replay newer inputs, blend small errors, snap big ones); rivals are drawn at their extrapolated
-*present* position (latest snapshot moved forward by latency, at most 250 ms, then smoothed; jumps over 6 m
-snap), so on screen they sit where the server collides them instead of 100 ms behind. For local contact
-they are dynamic bodies with the rival's real mass, reset to the snapshot every frame, so a bump shares
-momentum as it does on the server; the replay during reconciliation ignores them (their past positions are
-unknown, and the server state already contains those contacts). Client and server
-physics are not assumed to match bit-for-bit — the server state always wins. The server never trusts
-positions, speed, damage, laps or finish claims from a client, consumes at most one input per tick, buffers up
-to 4 queued inputs to absorb network jitter and drops anything beyond that (no speed-hacking by flooding).
-The HUD ping is the median of the last 10 round trips.
+**Multiplayer** is host-authoritative and serverless. The player who creates a room runs the same
+authoritative `HostServer` (`shared/host/`) in their browser that a dedicated server would run; guests link
+to it peer-to-peer over WebRTC data channels (a reliable channel for lobby and race setup, an unordered
+no-retransmit one for snapshots and inputs). There is no TURN server: when a direct link cannot open within
+8 s (strict NATs), that guest's traffic goes through the Firebase Realtime Database instead (slower, but it
+works). The host player itself connects through an in-page loopback link. Messages, prediction and
+reconciliation are unchanged from the server design: guests send only inputs (`[seq, tick, throttle,
+steer, buttons]`, 30 Hz batches); the host runs physics at 60 Hz and sends 20 Hz snapshots with the last
+applied input `ack`. Each guest predicts its own car in a client-side Rapier world, drawn between physics
+ticks, and reconciles to the host (rewind to `ack`, replay newer inputs; position and rotation errors are
+blended out, big ones snap; tolerances widen with speed). Rivals are drawn at their extrapolated present
+with velocity blending, so a new snapshot bends their path instead of jerking it. The client clock is
+slewed toward each new estimate rather than jumping. The host never trusts positions, speed, damage, laps
+or finish claims from a guest and validates every message with the strict parser. Press F3 in a race for
+FPS, ping, replays per second and the last correction size.
 
-**Quick play (Play Online):** Start searches; the server offers a seat in a random open public room (a new
-one with a random named map if none has space) and holds it for 10 s. "Ready" joins; letting it lapse
-frees the seat and stops your search. With 3 players in, a 15 s countdown lets more join (up to 8, no bots),
-then the race starts and the room locks: it never appears in searches again and cannot be joined by code.
-After the race, "Find next race" searches again (`server/rooms/Matchmaker.ts`, protocol v2).
+**Quick play (Play Online):** Start looks in the lobby directory (Firestore) for an open public room with a
+free seat and holds that seat for 10 s. "Ready" links to its host and takes the seat; letting it lapse frees
+the seat and stops your search. With nothing to join, your browser opens a public room and waits. With 3
+players in, a 15 s countdown lets more join (up to 8, no bots), then the race starts and the room is locked
+and delisted. After the race, "Find next race" searches again (`shared/lobby/quickPlay.ts`, protocol v3).
 
-**Lobby:** 6-character room codes (collision-checked) shown large with a QR code of the invite link
-`?room=CODE` (copy link / copy code buttons; on `localhost` the page says to open it via the LAN address so
-a phone can scan it), car cards with stats (the 3D car behind updates on pick), 2–8 slots, bots fill empty
-slots (optional), ready/unready, host-only settings (track, laps, bot difficulty, slots, items), locked
-during a race. Room states: lobby → loading → racing → finished → lobby. The host is only a lobby
-moderator; races run on the server. Host leaves the lobby → the next connected player becomes host.
+**Lobby:** 6-character room codes shown large with a QR code of the invite link `?room=CODE`, car cards
+with stats, 2–8 slots, bots fill empty slots (optional), ready/unready, host-only settings (track, laps,
+bot difficulty, slots, items), locked during a race. The room lives in the host's browser: the lobby tells
+the host to keep the tab open, and when the host leaves or closes it, guests are told the host left and
+return to the online screen. The host's race loop runs on a worker timer, so it keeps going in a
+background tab.
 
-**Disconnects:** the HUD shows the connection state; the car is driven by a bot meanwhile. The client
-resumes with a token kept in `sessionStorage` (never in the URL) and gets the room, race setup, start time
-and a full snapshot. Defaults: 20 s grace in the lobby, 60 s in a race; after the race deadline the human is
-DNF (the bot finishes the car). Empty rooms and their physics worlds are freed.
+**Disconnects:** a guest's car is bot-driven while it is away; the guest re-links and resumes with a token
+kept in `sessionStorage` (also after a page reload) and gets the room, race setup, start time and a full
+snapshot. 20 s grace in the lobby, 60 s in a race, then DNF.
 
-**Hardening:** strict per-message validation, 8 KB message limit, per-connection rate limit (90/s, burst
-180, sustained abuse closes the socket), at most 12 sockets per IP (`MAX_CONNECTIONS_PER_IP`; set
-`TRUST_PROXY=1` behind your own proxy so `X-Forwarded-For` is used), sockets that do not say hello within
-10 s are closed, 3 room creations per player per minute, a 3 s cooldown between race starts in a room,
-a bounded track cache, nickname validation and optional `ALLOWED_ORIGINS`. A failed race build returns the
-room to its lobby. Queued inputs are trimmed to 2 after a network burst so steering latency recovers.
-Origin checks are a convenience, not authentication — rooms are private by code only. Track generation and
-all rooms share one Node thread; very busy servers would need worker threads (not implemented).
+**Accounts (Firebase):** everyone plays signed in anonymously; Settings → Account → "Sign in with Google"
+links Google to the same account, so name, chosen car and promo unlocks follow the player to other devices
+(`src/net/AccountSync.js`). Security rules (`firestore.rules`, `database.rules.json`) let players change
+only their own profile and lobby entry, reserve only their own seat, read their own mail, and add an
+unlocked car only through an existing promo code document.
+
+**Hardening:** strict per-message validation, 8 KB limit for guest messages, per-link rate limit (90/s,
+burst 180, sustained abuse closes the link), only the host's own connection can create rooms, 3 room
+creations per minute, a 3 s cooldown between race starts. Peer-to-peer means the host's browser is trusted
+for its own room: fine for friends and casual quick play, not for ranked play (there is no leaderboard).
 
 ## Performance and heat
 
@@ -211,72 +221,63 @@ all rooms share one Node thread; very busy servers would need worker threads (no
 
 `npm run build` emits `sw.js` with a content-hash version and a precache list of the whole app (HTML,
 JS chunks including Rapier's inlined WASM, CSS, models). After one online visit, **solo and time trial load
-and run with no network**; the Friends screen reports that online play needs a server
-instead of spinning. New versions install in the background and are offered from the main menu
+and run with no network**; the online screens say that online races need internet. New versions install in the background and are offered from the main menu
 ("Update ready · restart"), never activated mid-race. Settings, the chosen car and time-trial records are
 in `localStorage` under versioned keys (`bruno-race:settings` v3, `bruno-race:records` v1; the key names are
 kept from the project's earlier name so existing saves still load).
 
-## Deployment
+## Online play and deployment
 
-The frontend is static; the multiplayer server is a long-running Node process. Static hosting alone cannot
-run online races.
+The whole game is a static site (Netlify); online play needs a free Firebase project and nothing else.
 
-1. **Server** (any VM/container host with WebSockets):
-   ```bash
-   npm ci --omit=dev
-   PORT=8787 ALLOWED_ORIGINS=https://race.example.com npm run start:server
-   ```
-   or `docker build -t nitro-clash-server . && docker run -p 8787:8787 -e ALLOWED_ORIGINS=… nitro-clash-server`.
-   Health check: `GET /health` → `{"ok":true,"protocol":1,…}`. WebSocket path: `/ws`.
-2. **TLS:** put the server behind a reverse proxy so pages on `https://` can use `wss://`. Example (nginx):
-   ```nginx
-   location /ws {
-     proxy_pass http://127.0.0.1:8787;
-     proxy_http_version 1.1;
-     proxy_set_header Upgrade $http_upgrade;
-     proxy_set_header Connection "upgrade";
-     proxy_read_timeout 120s;
-   }
-   location /health { proxy_pass http://127.0.0.1:8787; }
-   ```
-   (Caddy: `reverse_proxy /ws* 127.0.0.1:8787` handles upgrades automatically.)
-3. **Frontend:** `VITE_SERVER_URL=wss://race-server.example.com/ws npm run build`, then upload `dist/`
-   to any static host. Without `VITE_SERVER_URL` the client uses the page's host on port 8787.
-   Players can also set a server URL in Settings.
-4. **Playing with a friend on another device:** the server must be reachable from their network — on a LAN
-   run `npm run dev:all` and open `http://<your-LAN-IP>:5173` on both devices; over the internet use a public
-   host/port (or a tunnel) for the server and share the invite link.
-
-`docker compose up --build` (after `npm run build`) runs the server and an nginx copy of `dist/` on
-`http://localhost:8080` for an end-to-end local check. See `.env.example` for every variable.
+1. **Firebase project** (console.firebase.google.com):
+   * Authentication → Sign-in method: enable **Anonymous** and **Google**.
+   * Create a **Firestore** database and a **Realtime Database**.
+   * Project settings → Your apps → add a **Web app** and copy its config into `.env` (see `.env.example`):
+     `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+     `VITE_FIREBASE_DATABASE_URL`, `VITE_FIREBASE_APP_ID`. These identify the project; they are not secrets.
+   * Deploy the rules: `npx firebase-tools deploy --only firestore:rules,database` (uses `firebase.json`).
+   * Authentication → Settings → Authorized domains: add your Netlify domain.
+   * Promo codes on accounts: add a Firestore document `promoCodes/<hash>` with field `vehicleId`, where
+     `<hash>` is `promoHash(code)` from `src/core/promo.js` (salted SHA-256). Codes built into
+     `PROMO_HASHES` also work offline, on the device only.
+2. **Netlify:** build command `npm run build`, publish directory `dist` (see `netlify.toml`); add the same
+   `VITE_FIREBASE_*` variables under Site settings → Environment variables.
+3. **Free-tier limits** (Spark plan): Firestore 50k reads / 20k writes a day, Realtime Database 100
+   simultaneous connections and 10 GB a month. Direct WebRTC races use neither while racing; only relayed
+   guests (no direct link) send race traffic through the Realtime Database.
 
 ## Verified results
 
 Run on an Apple M2 laptop, Chrome, Node 24 (2026‑10‑24):
 
-* `npm test`: type-check clean, 34/34 tests (9 vehicle, 16 race, 9 multiplayer).
+* `npm test`: type-check clean, 42/42 tests (9 vehicle, 17 race, 4 lobby, 3 peer-link, 9 multiplayer)
+  (2026‑10‑27, serverless).
 * Browser, solo: loading → menu → setup → intro → countdown → race → results → *Race again*, 6 cars,
-  60 fps (display-capped) in a race; GPU geometry/texture counts stable across 4 race→menu cycles; JS heap
-  returns to ~60 MB after GC.
-* Browser, online: two separate browser contexts, invite link join, ready, synced start, both cars visible,
-  identical results on both, rematch without reload, page reload mid-race resumes the same race with
-  human control restored (bot drove meanwhile).
+  60 fps (display-capped); simulation 0.56 ms per frame for 6 cars (was 6 ms before hard CCD was limited
+  to fast cars).
+* Browser, online without Firebase (dev stand-in, two tabs, 2026‑10‑27): friends room by invite link over a
+  direct WebRTC link, race with snapshots every 50 ms; quick play offer → Ready → seat taken; with WebRTC
+  blocked in the guest tab, the relay carried the lobby and a full race; host leaving sends guests back with
+  "The host has left the game".
 * Browser, mobile emulation (844×390, touch): HUD layout, multi-touch gas + steer at once, `pointercancel`
   releases inputs.
-* Production build offline: server stopped + network offline → app loads from the service worker, solo race
-  runs, Friends screen shows the server message.
-* Server (`npm run bench`, 8 hard bots, items on): 0.24 ms per 60 Hz tick average, 0.49 ms p99 (2026‑10‑26,
-  longer v2 tracks); snapshots ~1.2 KB (≈24 KB/s per client); race setup ~366 KB once, compressed on the wire.
+* Production build offline: network offline → app loads from the service worker, solo race runs.
+* `npm run bench` (8 hard bots, items on): snapshots ~1.2 KB (≈24 KB/s per guest); race setup ~430 KB once
+  (chunked over data channels and the relay).
 
-**Not verified:** real phones/tablets (only Chrome device emulation), Safari/Firefox, the Docker image
-(Docker was not installed on the test machine), deployment behind a real TLS proxy, and long sessions with
-real network loss beyond the automated reconnect test. Treat performance on other devices as unknown.
+**Not verified:** the Firebase backend against a real project (no project was available: the directory,
+mailbox, accounts and rules are written to the documented APIs but untested), WebRTC between two different
+networks, real phones/tablets, Safari/Firefox, and long sessions with real network loss. Treat these as
+unknown until tried.
 
 ## Known limitations
 
 * Online prediction covers your own car; rivals are extrapolated, so at high latency a rival that
   brakes or turns hard can show a small correction.
+* A room lives in its host's browser: if the host leaves or closes the tab, the room ends for everyone
+  (no host migration). The host has zero latency and runs the authoritative simulation.
+* No TURN server: guests behind strict NATs use the Realtime Database relay, which adds latency.
 * Bots overtake and avoid traffic but are not perfect in every pile-up; stuck bots reverse, then reset.
 * Only procedurally generated circuits (40 named tracks plus any code); no hand-modelled tracks. The
   rear-view mirror adds a second scene render (every other frame) in hood and cockpit views.
@@ -289,4 +290,4 @@ New and redesigned cars follow [docs/VEHICLES.md](docs/VEHICLES.md) (contract, A
 `npm run model:cars` (`scripts/build-cars.mjs`, designs in `scripts/cars/`, 5.6k–7.1k triangles each), the
 world pack by `model:world`; textures are drawn on canvases at runtime; all audio is synthesised in `src/audio/`.
 No third-party art, music or sound files are shipped. Code libraries keep their own licences
-(three.js MIT, Rapier Apache-2.0, ws MIT, Vite MIT, qrcode-generator MIT).
+(three.js MIT, Rapier Apache-2.0, Firebase JS SDK Apache-2.0, Vite MIT, qrcode-generator MIT; build-only: glTF-Transform MIT, meshoptimizer MIT).

@@ -1,12 +1,12 @@
-import { now } from '../clock.ts';
-import { trackForSeed } from '../../shared/track/presets.ts';
-import RaceSimulation, { type RaceResult } from '../../shared/race/RaceSimulation.ts';
-import type { ParticipantConfig } from '../../shared/race/RaceCar.ts';
-import { createRng } from '../../shared/rng.ts';
-import { PUBLIC_VEHICLES } from '../../shared/vehicles.ts';
-import { DEFAULT_ROOM_SETTINGS, type LobbyPlayer, type RaceSetup, type RoomSettings, type RoomState } from '../../shared/net/protocol.ts';
-import { MATCH_COUNTDOWN_MS, MATCH_MIN_PLAYERS } from '../../shared/constants.ts';
-import type Player from '../Player.ts';
+import { now } from './clock.ts';
+import { trackForSeed } from '../track/presets.ts';
+import RaceSimulation, { type RaceResult } from '../race/RaceSimulation.ts';
+import type { ParticipantConfig } from '../race/RaceCar.ts';
+import { createRng } from '../rng.ts';
+import { PUBLIC_VEHICLES } from '../vehicles.ts';
+import { DEFAULT_ROOM_SETTINGS, type LobbyPlayer, type RaceSetup, type RoomSettings, type RoomState } from '../net/protocol.ts';
+import { MATCH_COUNTDOWN_MS, MATCH_MIN_PLAYERS } from '../constants.ts';
+import type Player from './Player.ts';
 import RaceRunner from './RaceRunner.ts';
 
 export type RoomError = 'not-host' | 'wrong-state' | 'not-ready' | 'full' | 'in-progress' | 'too-soon' | 'start-failed';
@@ -16,7 +16,7 @@ const START_COOLDOWN_MS = 3000;
 
 const BOT_NAMES = ['Vex', 'Ronan', 'Kira', 'Taro', 'Mila', 'Juno', 'Axel', 'Nadia', 'Orion', 'Suki'];
 
-/** Quick-play rooms are created by the matchmaker: no host, no bots, a random named track. */
+/** Quick-play rooms: no host, no bots, a random named track. */
 export interface PublicRoomOptions {
   trackSeed: string;
   trackName: string;
@@ -43,8 +43,6 @@ export default class Room {
   readonly isPublic: boolean;
   /** A public room never takes new players once its race has started. */
   locked = false;
-  /** Seats held by match offers that have not been accepted yet (public rooms). */
-  reserved = 0;
   countdownEndsAt = -1;
 
   constructor(code: string, host: Player | null, loadTimeoutMs: number, publicOptions: PublicRoomOptions | null = null) {
@@ -58,10 +56,10 @@ export default class Room {
     if (host) this.add(host);
   }
 
-  /** Seats a matchmaker may still offer: open public lobby, minus players and pending offers. */
+  /** Seats the lobby directory may still advertise: open public lobby minus players. */
   get freeSeats(): number {
     if (!this.isPublic || this.locked || this.state !== 'lobby' || this.closed) return 0;
-    return this.settings.maxPlayers - this.players.length - this.reserved;
+    return this.settings.maxPlayers - this.players.length;
   }
 
   get isEmpty(): boolean {

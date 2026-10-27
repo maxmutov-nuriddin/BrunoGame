@@ -62,9 +62,10 @@ export type ClientMessage =
   | { type: 'input'; inputs: { seq: number; tick: number; input: DriveInput }[] }
   | { type: 'ping'; t: number }
   | { type: 'returnToLobby' }
-  | { type: 'queueJoin' }
-  | { type: 'queueLeave' }
-  | { type: 'matchAccept'; offerId: number };
+  /** Host only: open a quick-play room and sit in it. */
+  | { type: 'createPublicRoom' }
+  /** Matched through the lobby directory: take a seat in this host's public room. */
+  | { type: 'joinPublic'; code: string };
 
 export interface RaceSetup {
   raceId: number;
@@ -88,10 +89,6 @@ export type ServerMessage =
       /** Server time the public race starts, or -1 while waiting for players. */
       countdownEndsAt: number;
     }
-  | { type: 'queueStatus'; searching: boolean }
-  /** A seat is held for you; accept with matchAccept before `expiresAt` (server time). */
-  | { type: 'matchFound'; offerId: number; expiresAt: number; players: number; maxPlayers: number; trackName: string }
-  | { type: 'matchExpired'; offerId: number }
   | { type: 'raceSetup'; setup: RaceSetup }
   | { type: 'raceStart'; raceId: number; tick0At: number; goTick: number }
   | { type: 'snapshot'; s: WireSnapshot }
@@ -207,15 +204,15 @@ export function parseClientMessage(text: string): ClientMessage | null {
       if (!isInt(raw.v, 0, 1000) || typeof raw.token !== 'string' || !/^[A-Za-z0-9_-]{20,64}$/.test(raw.token)) return null;
       return { type: 'resume', v: raw.v, token: raw.token };
     case 'createRoom':
-    case 'queueJoin':
-    case 'queueLeave':
+    case 'createPublicRoom':
     case 'leaveRoom':
     case 'startRace':
     case 'returnToLobby':
       return { type: raw.type };
-    case 'joinRoom': {
+    case 'joinRoom':
+    case 'joinPublic': {
       const code = typeof raw.code === 'string' ? raw.code.toUpperCase().trim() : '';
-      return isRoomCode(code) ? { type: 'joinRoom', code } : null;
+      return isRoomCode(code) ? { type: raw.type, code } : null;
     }
     case 'setReady':
       return typeof raw.ready === 'boolean' ? { type: 'setReady', ready: raw.ready } : null;
@@ -231,8 +228,6 @@ export function parseClientMessage(text: string): ClientMessage | null {
     }
     case 'loaded':
       return isInt(raw.raceId, 0, 2 ** 31) ? { type: 'loaded', raceId: raw.raceId } : null;
-    case 'matchAccept':
-      return isInt(raw.offerId, 1, 2 ** 31) ? { type: 'matchAccept', offerId: raw.offerId } : null;
     case 'ping':
       return typeof raw.t === 'number' && Number.isFinite(raw.t) ? { type: 'ping', t: raw.t } : null;
     case 'input': {

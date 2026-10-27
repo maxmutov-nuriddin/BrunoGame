@@ -15,9 +15,14 @@ const INTERPOLATION_DELAY_MS = 100;
 /** Rivals are predicted at most this far past their last snapshot. */
 const MAX_EXTRAPOLATION_MS = 250;
 const RIVAL_SMOOTHING = 14;
+/** Rivals: how fast the drawn velocity follows the snapshot velocity, and the drawn position its target (1/s). */
+const RIVAL_VELOCITY_BLEND = 10;
+const RIVAL_POSITION_BLEND = 6;
 const RIVAL_SNAP_DISTANCE = 6;
 const target = new THREE.Vector3();
 const targetQuat = new THREE.Quaternion();
+const tmpVelocity = new THREE.Vector3();
+const IDENTITY_QUAT = new THREE.Quaternion();
 const SNAPSHOT_BUFFER = 40;
 const HISTORY = 240;
 const POSITION_TOLERANCE = 0.12;
@@ -35,7 +40,7 @@ const PROXY_FRICTION = 0.12;
 const PROXY_RESTITUTION = 0.05;
 
 /**
- * Networked race view. The server is the only authority: the local car is predicted for
+ * Networked race view. The host (a browser running shared/host) is the only authority: the local car is predicted for
  * responsiveness and reconciled to server snapshots; rivals are interpolated.
  */
 export default class OnlineRaceSession {
@@ -65,9 +70,14 @@ export default class OnlineRaceSession {
     this.results = null;
     this.initialized = false;
     this.correction = new THREE.Vector3();
+    /** Rotation still to blend out after a replay: drawn = correctionQuat × simulated. */
+    this.correctionQuat = new THREE.Quaternion();
+    /** Pose one tick before the current one, for drawing the local car between ticks. */
+    this.prevPose = null;
+    this.rivalMotion = new Map();
+    this.stats = { replays: 0, lastError: 0 };
     this.serverPhase = 'countdown';
     this.lastSnapshotAt = 0;
-    this.rivalSeen = new Set();
 
     const slot = setup.participants.findIndex((p) => p.id === this.localId);
     const grid = this.track.grid[Math.max(0, slot)];
@@ -198,6 +208,7 @@ export default class OnlineRaceSession {
     if (!this.initialized || flags.wrecked) {
       this.car.setState(serverState);
       this.car.setGhost(flags.ghost);
+      this.prevPose = null;
       this.localTick = snapshot.k;
       this.history = this.history.filter((h) => h.seq > snapshot.ack);
       this.initialized = true;
@@ -219,6 +230,10 @@ export default class OnlineRaceSession {
       return;
     }
     const before = this.car.body.translation();
+    const beforeRotation = this.car.body.rotation();
+    const qBefore = new THREE.Quaternion(beforeRotation.x, beforeRotation.y, beforeRotation.z, beforeRotation.w);
+    this.stats.replays += 1;
+    this.stats.lastError = positionError;
     this.car.setState(serverState);
     // Rival positions at those past ticks are unknown (proxies sit at the present), so the replay ignores
     // them; the server state we rewound to already contains every contact up to the acknowledged input.
@@ -231,8 +246,16 @@ export default class OnlineRaceSession {
     const after = this.car.body.translation();
     const jump = Math.hypot(before.x - after.x, before.z - after.z);
     // Respawns and big desyncs snap; small errors are blended out over a few frames.
-    if (jump > SNAP_DISTANCE) this.correction.set(0, 0, 0);
-    else this.correction.add(new THREE.Vector3(before.x - after.x, before.y - after.y, before.z - after.z));
+    if (jump > SNAP_DISTANCE) {
+      this.correction.set(0, 0, 0);
+      this.correctionQuat.identity();
+      this.prevPose = null;
+      return;
+    }
+    this.correction.add(new THREE.Vector3(before.x - after.x, before.y - after.y, before.z - after.z));
+    const r = this.car.body.rotation();
+    const qAfterInverse = new THREE.Quaternion(r.x, r.y, r.z, r.w).invert();
+    this.correctionQuat.premultiply(qBefore.multiply(qAfterInverse)).normalize();
   }
 
   stateFromWire(wire, me, flags) {
@@ -267,6 +290,7 @@ export default class OnlineRaceSession {
     while (this.localTick < target && steps < MAX_CATCH_UP) {
       const tick = this.localTick;
       const command = this.phase === 'finished' ? NEUTRAL_INPUT : input;
+      this.capturePrevPose();
       this.simulate(command, tick);
       const seq = this.seq++;
       this.history.push({ seq, tick, input: command, state: this.car.getState() });
@@ -277,7 +301,17 @@ export default class OnlineRaceSession {
       if (this.localTick % INPUT_SEND_EVERY_TICKS === 0) this.flush();
     }
     if (this.localTick < target - MAX_CATCH_UP) this.localTick = target;
-    this.correction.multiplyScalar(Math.exp(-dt * CORRECTION_DECAY));
+    const decay = Math.exp(-dt * CORRECTION_DECAY);
+    this.correction.multiplyScalar(decay);
+    this.correctionQuat.slerp(IDENTITY_QUAT, 1 - decay);
+  }
+
+  capturePrevPose() {
+    const p = this.car.body.translation();
+    const q = this.car.body.rotation();
+    this.prevPose ??= { p: new THREE.Vector3(), q: new THREE.Quaternion() };
+    this.prevPose.p.set(p.x, p.y, p.z);
+    this.prevPose.q.set(q.x, q.y, q.z, q.w);
   }
 
   flush() {
@@ -319,8 +353,17 @@ export default class OnlineRaceSession {
       const p = this.car.body.translation();
       const q = this.car.body.rotation();
       const v = this.car.body.linvel();
-      frame.position.set(p.x + this.correction.x, p.y + this.correction.y, p.z + this.correction.z);
+      frame.position.set(p.x, p.y, p.z);
       frame.quaternion.set(q.x, q.y, q.z, q.w);
+      // Draw between the previous and the current tick (one tick behind real time) so the car glides
+      // instead of stepping at 60 Hz on faster screens or when a frame takes two ticks.
+      if (this.prevPose) {
+        const alpha = THREE.MathUtils.clamp(this.serverTick() - this.localTick, 0, 1);
+        frame.position.lerpVectors(this.prevPose.p, frame.position, alpha);
+        frame.quaternion.slerpQuaternions(this.prevPose.q, frame.quaternion, alpha);
+      }
+      frame.position.add(this.correction);
+      frame.quaternion.premultiply(this.correctionQuat);
       frame.velocity.set(v.x, v.y, v.z);
       frame.refresh();
       frame.steer = this.car.steerValue;
@@ -347,12 +390,17 @@ export default class OnlineRaceSession {
       if (!c) continue;
       target.set(c[1] + c[8] * ahead, c[2] + c[9] * ahead, c[3] + c[10] * ahead);
       targetQuat.set(c[4], c[5], c[6], c[7]);
-      if (!this.rivalSeen.has(id) || frame.position.distanceTo(target) > RIVAL_SNAP_DISTANCE) {
+      const motion = this.rivalMotion.get(id);
+      if (!motion || frame.position.distanceTo(target) > RIVAL_SNAP_DISTANCE) {
         frame.position.copy(target);
         frame.quaternion.copy(targetQuat);
-        this.rivalSeen.add(id);
+        this.rivalMotion.set(id, { velocity: new THREE.Vector3(c[8], c[9], c[10]) });
       } else {
-        frame.position.lerp(target, blend);
+        // Projective velocity blending: coast on a velocity that eases toward the snapshot's, and pull the
+        // position toward the extrapolated target gently. A new snapshot bends the path instead of jerking it.
+        motion.velocity.lerp(tmpVelocity.set(c[8], c[9], c[10]), 1 - Math.exp(-dt * RIVAL_VELOCITY_BLEND));
+        frame.position.addScaledVector(motion.velocity, dt);
+        frame.position.lerp(target, 1 - Math.exp(-dt * RIVAL_POSITION_BLEND));
         frame.quaternion.slerp(targetQuat, blend);
       }
       frame.velocity.set(c[8], c[9], c[10]);

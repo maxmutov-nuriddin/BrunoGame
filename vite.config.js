@@ -22,7 +22,8 @@ function serviceWorker() {
         .filter((file) => !file.endsWith('.zip') && !file.endsWith('.md') && !file.includes('vehicle-pack/') && !file.endsWith('manifest.json'));
     },
     async generateBundle(_options, bundle) {
-      const emitted = Object.keys(bundle).filter((name) => !name.endsWith('.map'));
+      // Online-only code (the Firebase SDK) is not precached: it is useless offline and nearly 1 MB.
+      const emitted = Object.keys(bundle).filter((name) => !name.endsWith('.map') && !name.startsWith('assets/firebase'));
       const files = ['./', ...emitted.map((name) => `./${name}`), ...publicFiles.map((name) => `./${name}`)];
       const version = createHash('sha256').update(files.join('|')).update(String(Object.values(bundle).map((b) => b.code?.length ?? b.source?.length ?? 0))).digest('hex').slice(0, 12);
       const template = await readFile(join(process.cwd(), 'scripts/sw-template.js'), 'utf8');
@@ -73,6 +74,8 @@ export default defineConfig({
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('three')) return 'three-core';
           if (id.includes('rapier')) return 'physics';
+          // Only online play needs Firebase: its own chunk, fetched on demand, never at boot.
+          if (/firebase|@grpc|protobufjs|[/\\]idb[/\\]|tslib|re2js/.test(id)) return 'firebase-sdk';
           return 'vendor';
         }
       }
