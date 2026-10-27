@@ -308,3 +308,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; padding: 
 
 .lobby [data-preview] { margin-bottom: 8px; }
 .lobby [data-preview-info] { margin: 0 0 12px; }
+
+/* Quick play */
+.online__panel { max-width: 560px; display: grid; gap: 12px; }
+.online__actions { display: flex; gap: 10px; }
+.match-offer { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5, 6, 10, 0.6); z-index: 20; }
+.match-offer__panel { min-width: min(92vw, 380px); display: grid; gap: 10px; text-align: center; }
+.match-offer__timer { height: 8px; border-radius: 99px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.match-offer__timer i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--cyan), var(--hot)); transition: width 0.2s linear; }
+.match-offer__seconds { font: italic 900 2rem var(--display); margin: 0; }
+.lobby.is-public .lobby__invite, .lobby.is-public [data-host-note], .lobby.is-public .field, .lobby.is-public .toggle, .lobby.is-public [data-act="randomMap"] { display: none; }

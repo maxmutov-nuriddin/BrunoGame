@@ -5,6 +5,7 @@ import type { ParticipantConfig } from '../../shared/race/RaceCar.ts';
 import { createRng } from '../../shared/rng.ts';
 import { VEHICLES } from '../../shared/vehicles.ts';
 import { DEFAULT_ROOM_SETTINGS, type LobbyPlayer, type RaceSetup, type RoomSettings, type RoomState } from '../../shared/net/protocol.ts';
+import { MATCH_COUNTDOWN_MS, MATCH_MIN_PLAYERS } from '../../shared/constants.ts';
 import type Player from '../Player.ts';
 import RaceRunner from './RaceRunner.ts';
 
@@ -15,9 +16,16 @@ const START_COOLDOWN_MS = 3000;
 
 const BOT_NAMES = ['Vex', 'Ronan', 'Kira', 'Taro', 'Mila', 'Juno', 'Axel', 'Nadia', 'Orion', 'Suki'];
 
+/** Quick-play rooms are created by the matchmaker: no host, no bots, a random named track. */
+export interface PublicRoomOptions {
+  trackSeed: string;
+  trackName: string;
+}
+
 /**
- * One private room: lobby, loading, racing and results. The host only steers lobby settings;
- * the race itself runs here on the server, independent of any browser.
+ * One room: lobby, loading, racing and results. A private room has a host who steers lobby settings
+ * and starts the race; a public (quick-play) room has none, starts by itself once MATCH_MIN_PLAYERS
+ * have joined, and is locked for good when its race starts. Races run here, independent of browsers.
  */
 export default class Room {
   readonly code: string;
@@ -32,12 +40,28 @@ export default class Room {
   closed = false;
   private loadingSince = -1;
   private readonly loadTimeoutMs: number;
+  readonly isPublic: boolean;
+  /** A public room never takes new players once its race has started. */
+  locked = false;
+  /** Seats held by match offers that have not been accepted yet (public rooms). */
+  reserved = 0;
+  countdownEndsAt = -1;
 
-  constructor(code: string, host: Player, loadTimeoutMs: number) {
+  constructor(code: string, host: Player | null, loadTimeoutMs: number, publicOptions: PublicRoomOptions | null = null) {
     this.code = code;
-    this.hostId = host.id;
+    this.hostId = host?.id ?? '';
     this.loadTimeoutMs = loadTimeoutMs;
-    this.add(host);
+    this.isPublic = publicOptions !== null;
+    if (publicOptions) {
+      this.settings = { ...this.settings, ...publicOptions, fillBots: false };
+    }
+    if (host) this.add(host);
+  }
+
+  /** Seats a matchmaker may still offer: open public lobby, minus players and pending offers. */
+  get freeSeats(): number {
+    if (!this.isPublic || this.locked || this.state !== 'lobby' || this.closed) return 0;
+    return this.settings.maxPlayers - this.players.length - this.reserved;
   }
 
   get isEmpty(): boolean {
@@ -49,14 +73,16 @@ export default class Room {
   }
 
   canJoin(): RoomError | null {
+    if (this.isPublic && (this.locked || this.state !== 'lobby')) return 'in-progress';
     if (this.state === 'loading' || this.state === 'racing') return 'in-progress';
     if (this.players.length >= this.settings.maxPlayers) return 'full';
     return null;
   }
 
-  add(player: Player): void {
+  /** `ready` is true for quick play: accepting the match is the ready press. */
+  add(player: Player, ready = false): void {
     player.room = this;
-    player.ready = false;
+    player.ready = ready;
     player.name = this.uniqueName(player.name, player);
     this.players.push(player);
     this.broadcastRoom();
@@ -75,6 +101,7 @@ export default class Room {
   }
 
   private transferHost(): void {
+    if (this.isPublic) return;
     const next = this.players.find((p) => p.connected) ?? this.players[0];
     if (next) this.hostId = next.id;
   }
@@ -116,6 +143,7 @@ export default class Room {
   }
 
   returnToLobby(player: Player): RoomError | null {
+    if (this.isPublic) return 'wrong-state';
     if (player.id !== this.hostId) return 'not-host';
     if (this.state !== 'finished') return 'wrong-state';
     this.state = 'lobby';
@@ -125,11 +153,35 @@ export default class Room {
 
   /** Host starts (or rematches) once every other connected player is ready. */
   async startRace(player: Player): Promise<RoomError | null> {
-    if (player.id !== this.hostId) return 'not-host';
+    if (this.isPublic || player.id !== this.hostId) return 'not-host';
     if (this.state !== 'lobby' && this.state !== 'finished') return 'wrong-state';
     const racers = this.players.filter((p) => p.connected);
     if (racers.some((p) => p.id !== this.hostId && !p.ready)) return 'not-ready';
     if (now() - this.lastStartAt < START_COOLDOWN_MS) return 'too-soon';
+    return this.beginRace(racers);
+  }
+
+  /** Public rooms: start the countdown at MATCH_MIN_PLAYERS, stop it if players leave, race when it ends. */
+  private updateCountdown(time: number): void {
+    if (!this.isPublic || this.locked || this.state !== 'lobby') return;
+    const present = this.players.filter((p) => p.connected).length;
+    if (this.countdownEndsAt < 0 && present >= MATCH_MIN_PLAYERS) {
+      this.countdownEndsAt = time + MATCH_COUNTDOWN_MS;
+      this.broadcastRoom();
+    } else if (this.countdownEndsAt >= 0 && present < MATCH_MIN_PLAYERS) {
+      this.countdownEndsAt = -1;
+      this.broadcastRoom();
+    } else if (this.countdownEndsAt >= 0 && time >= this.countdownEndsAt) {
+      this.locked = true;
+      this.countdownEndsAt = -1;
+      void this.beginRace(this.players.filter((p) => p.connected)).then((problem) => {
+        // A race that could not be built leaves the room open; the countdown restarts by itself.
+        if (problem) this.locked = false;
+      });
+    }
+  }
+
+  private async beginRace(racers: Player[]): Promise<RoomError | null> {
     this.lastStartAt = now();
 
     const previousState = this.state;
@@ -205,6 +257,7 @@ export default class Room {
   }
 
   update(now: number): void {
+    this.updateCountdown(now);
     if (this.state === 'loading') this.maybeStart(now);
     if (this.state !== 'racing' || !this.runner) return;
     const finished = this.runner.update(now);
@@ -257,7 +310,10 @@ export default class Room {
   broadcastRoom(): void {
     const players = this.lobbyPlayers();
     for (const p of this.players) {
-      p.send({ type: 'room', code: this.code, state: this.state, settings: this.settings, players, botSlots: this.botSlots, youId: p.id, results: this.results });
+      p.send({
+        type: 'room', code: this.code, state: this.state, settings: this.settings, players, botSlots: this.botSlots, youId: p.id,
+        results: this.results, public: this.isPublic, countdownEndsAt: this.countdownEndsAt
+      });
     }
   }
 

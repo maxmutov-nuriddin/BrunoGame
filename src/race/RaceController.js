@@ -186,7 +186,7 @@ export default class RaceController {
     }
     if (!me) return;
     const mode = this.game.settings.get('cameraMode');
-    this.view.setLocalCarVisible(!FIRST_PERSON.has(mode));
+    this.view.setLocalCarVisible(mode !== 'hood', mode === 'cockpit');
     this.view.cockpit?.update(me, mode === 'cockpit', dt);
     this.updateMirror(me, FIRST_PERSON.has(mode) && this.game.settings.get('rearMirror'));
     this.view.chase.update(dt, me, {
@@ -209,7 +209,7 @@ export default class RaceController {
     const width = Math.round(Math.min(MIRROR.max, Math.max(MIRROR.min, window.innerWidth * MIRROR.share)));
     const rect = { x: Math.round((window.innerWidth - width) / 2), y: MIRROR.top, width, height: Math.round(width / MIRROR.aspect) };
     this.view.chase.updateMirror(me);
-    renderer.setMirror({ scene: this.view.scene, camera: this.view.chase.mirror, rect });
+    renderer.setMirror({ scene: this.view.scene, camera: this.view.chase.mirror, rect, hidden: [this.view.localCarGroup].filter(Boolean) });
     if (!this.mirrorFrame) {
       this.mirrorFrame = document.createElement('div');
       this.mirrorFrame.className = 'rear-mirror';

@@ -3,7 +3,7 @@ import { escapeHtml } from '../format.js';
 import { findVehicle } from '../../../shared/vehicles.ts';
 
 export default class MenuScreen {
-  constructor(game, { onSolo, onFriends, onGarage, onSettings }) {
+  constructor(game, { onSolo, onOnline, onFriends, onGarage, onSettings }) {
     const vehicle = findVehicle(game.settings.get('vehicleId'));
     this.el = html(`
       <section class="screen menu">
@@ -12,6 +12,7 @@ export default class MenuScreen {
         </div>
         <nav class="menu__list" aria-label="Main menu">
           <button class="menu__item is-hero" data-act="solo"><b>Play Solo</b><small>Race bots or chase the clock · works offline</small></button>
+          <button class="menu__item" data-act="online"><b>Play Online</b><small>Quick race against random players</small></button>
           <button class="menu__item" data-act="friends"><b>Play with Friends</b><small>Private online room · invite by link</small></button>
           <button class="menu__item" data-act="garage"><b>Garage</b><small>${escapeHtml(vehicle.name)} · ${escapeHtml(vehicle.role)}</small></button>
           <button class="menu__item" data-act="settings"><b>Settings</b><small>Graphics, audio, controls</small></button>
@@ -24,6 +25,7 @@ export default class MenuScreen {
       </section>`);
     onAction(this.el, {
       solo: onSolo,
+      online: onOnline,
       friends: onFriends,
       garage: onGarage,
       settings: onSettings,

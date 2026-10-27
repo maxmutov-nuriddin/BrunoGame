@@ -4,6 +4,7 @@ import { WHEEL_CONNECTIONS, WHEEL_RADIUS } from '../../shared/physics/VehiclePhy
 import { nameTagTexture } from './textures.js';
 
 const GHOST_OPACITY = 0.42;
+const INTERIOR_GLASS_OPACITY = 0.12;
 /** Wheel tread lugs are most of a car's triangles but only a few pixels beyond this distance. */
 export const TREAD_DETAIL_DISTANCE = 12;
 const TREAD_NAME = /^Tread/;
@@ -83,6 +84,18 @@ export default class CarView {
     }
     this.ghost = false;
     this.time = 0;
+  }
+
+  /** Seen from the driver's seat: glass turns see-through so the windscreen and windows can be looked out of. */
+  setInteriorView(interior) {
+    if (interior === this.interior) return;
+    this.interior = interior;
+    for (const material of this.materials) {
+      if (material.name !== 'Glass') continue;
+      material.transparent = interior || this.ghost;
+      material.opacity = interior ? INTERIOR_GLASS_OPACITY : this.ghost ? GHOST_OPACITY : 1;
+      material.depthWrite = !interior && !this.ghost;
+    }
   }
 
   setGhost(ghost) {

@@ -61,7 +61,10 @@ export type ClientMessage =
   | { type: 'loaded'; raceId: number }
   | { type: 'input'; inputs: { seq: number; tick: number; input: DriveInput }[] }
   | { type: 'ping'; t: number }
-  | { type: 'returnToLobby' };
+  | { type: 'returnToLobby' }
+  | { type: 'queueJoin' }
+  | { type: 'queueLeave' }
+  | { type: 'matchAccept'; offerId: number };
 
 export interface RaceSetup {
   raceId: number;
@@ -77,7 +80,18 @@ export interface RaceSetup {
 export type ServerMessage =
   | { type: 'welcome'; v: number; playerId: string; token: string; serverTime: number }
   | { type: 'error'; code: string; message: string }
-  | { type: 'room'; code: string; state: RoomState; settings: RoomSettings; players: LobbyPlayer[]; botSlots: number; youId: string; results: RaceResult[] | null }
+  | {
+      type: 'room'; code: string; state: RoomState; settings: RoomSettings; players: LobbyPlayer[]; botSlots: number; youId: string;
+      results: RaceResult[] | null;
+      /** Quick-play room (no host; starts by itself). */
+      public: boolean;
+      /** Server time the public race starts, or -1 while waiting for players. */
+      countdownEndsAt: number;
+    }
+  | { type: 'queueStatus'; searching: boolean }
+  /** A seat is held for you; accept with matchAccept before `expiresAt` (server time). */
+  | { type: 'matchFound'; offerId: number; expiresAt: number; players: number; maxPlayers: number; trackName: string }
+  | { type: 'matchExpired'; offerId: number }
   | { type: 'raceSetup'; setup: RaceSetup }
   | { type: 'raceStart'; raceId: number; tick0At: number; goTick: number }
   | { type: 'snapshot'; s: WireSnapshot }
@@ -193,6 +207,8 @@ export function parseClientMessage(text: string): ClientMessage | null {
       if (!isInt(raw.v, 0, 1000) || typeof raw.token !== 'string' || !/^[A-Za-z0-9_-]{20,64}$/.test(raw.token)) return null;
       return { type: 'resume', v: raw.v, token: raw.token };
     case 'createRoom':
+    case 'queueJoin':
+    case 'queueLeave':
     case 'leaveRoom':
     case 'startRace':
     case 'returnToLobby':
@@ -215,6 +231,8 @@ export function parseClientMessage(text: string): ClientMessage | null {
     }
     case 'loaded':
       return isInt(raw.raceId, 0, 2 ** 31) ? { type: 'loaded', raceId: raw.raceId } : null;
+    case 'matchAccept':
+      return isInt(raw.offerId, 1, 2 ** 31) ? { type: 'matchAccept', offerId: raw.offerId } : null;
     case 'ping':
       return typeof raw.t === 'number' && Number.isFinite(raw.t) ? { type: 'ping', t: raw.t } : null;
     case 'input': {

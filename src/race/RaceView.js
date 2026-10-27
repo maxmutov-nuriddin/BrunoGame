@@ -55,11 +55,10 @@ export default class RaceView {
       this.cars.set(p.id, view);
       this.scene.add(view.group);
     });
-    // The interior belongs to the local car: its style, and its bonnet in that car's paint.
+    // The interior belongs to the local car and is built inside that car's own cabin.
     const local = this.cars.get(localId);
     if (local) {
-      const paint = local.materials.find((material) => material.name === 'Paint');
-      this.cockpit = new Cockpit(local.vehicle, paint ? paint.color : new THREE.Color('#888888'));
+      this.cockpit = new Cockpit(local.vehicle);
       this.scene.add(this.cockpit.group);
     }
   }
@@ -107,10 +106,16 @@ export default class RaceView {
     }
   }
 
-  /** Hidden in the first-person camera so the body does not fill the screen. */
-  setLocalCarVisible(visible) {
+  /** Hood view hides the body; cockpit view keeps it (bonnet, mirrors, wing) with see-through glass. */
+  setLocalCarVisible(visible, interior = false) {
     const view = this.cars.get(this.localId);
-    if (view) view.group.visible = visible;
+    if (!view) return;
+    view.group.visible = visible;
+    view.setInteriorView(interior);
+  }
+
+  get localCarGroup() {
+    return this.cars.get(this.localId)?.group ?? null;
   }
 
   sparks(x, y, z, intensity) {

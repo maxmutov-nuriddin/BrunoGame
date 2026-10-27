@@ -152,7 +152,7 @@ export default class Renderer {
   }
 
   renderMirror() {
-    const { scene, camera, rect } = this.mirror;
+    const { scene, camera, rect, hidden = [] } = this.mirror;
     const r = this.renderer;
     const pixelRatio = r.getPixelRatio();
     const width = Math.max(1, Math.round(rect.width * pixelRatio));
@@ -167,9 +167,15 @@ export default class Renderer {
     if (this.mirrorFrame++ % MIRROR_EVERY_FRAMES === 0) {
       camera.aspect = rect.width / rect.height;
       camera.updateProjectionMatrix();
+      // Objects the mirror must not show (your own car around the mirror camera).
+      const wasVisible = hidden.map((object) => object.visible);
+      for (const object of hidden) object.visible = false;
       r.setRenderTarget(this.mirrorTarget);
       r.render(scene, camera);
       r.setRenderTarget(null);
+      hidden.forEach((object, i) => {
+        object.visible = wasVisible[i];
+      });
     }
     const bottom = window.innerHeight - rect.y - rect.height;
     const autoClear = r.autoClear;

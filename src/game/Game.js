@@ -16,6 +16,7 @@ import LoadingScreen from '../ui/screens/LoadingScreen.js';
 import MenuScreen from '../ui/screens/MenuScreen.js';
 import GarageScreen from '../ui/screens/GarageScreen.js';
 import SoloScreen from '../ui/screens/SoloScreen.js';
+import OnlineScreen from '../ui/screens/OnlineScreen.js';
 import FriendsScreen from '../ui/screens/FriendsScreen.js';
 import LobbyScreen from '../ui/screens/LobbyScreen.js';
 import ResultsScreen from '../ui/screens/ResultsScreen.js';
@@ -123,12 +124,13 @@ export default class Game {
     this.net.addEventListener('room', (event) => {
       this.room = event.detail;
       this.screen?.update?.(this.room);
-      if (this.room && (this.screenName === 'friends' || this.screenName === 'menu')) this.showLobby();
+      if (this.room && (this.screenName === 'friends' || this.screenName === 'online' || this.screenName === 'menu')) this.showLobby();
     });
     this.net.addEventListener('raceSetup', (event) => this.startOnlineRace(event.detail.setup));
     this.net.addEventListener('left', () => {
+      const wasPublic = this.room?.public;
       this.room = null;
-      if (this.screenName === 'lobby' || this.screenName === 'results') this.showFriends();
+      if (this.screenName === 'lobby' || this.screenName === 'results') (wasPublic ? this.showOnline() : this.showFriends());
     });
     this.net.addEventListener('error', (event) => this.toast(event.detail.message, true));
     this.net.addEventListener('state', (event) => {
@@ -200,6 +202,7 @@ export default class Game {
     this.showroom.showVehicle(this.settings.get('vehicleId'));
     this.setScreen('menu', () => new MenuScreen(this, {
       onSolo: () => this.showSolo(),
+      onOnline: () => this.showOnline(),
       onFriends: () => this.showFriends(),
       onGarage: () => this.showGarage(() => this.showMenu()),
       onSettings: () => this.openSettings()
@@ -233,14 +236,21 @@ export default class Game {
     this.setScreen('friends', () => new FriendsScreen(this, { onBack: () => this.leaveOnline(), prefillCode }));
   }
 
+  /** Quick play search; `autoStart` searches straight away (after "Find next race"). */
+  showOnline(autoStart = false) {
+    this.setScreen('online', () => new OnlineScreen(this, { onBack: () => this.leaveOnline(), autoStart }));
+  }
+
   showLobby() {
     this.setScreen('lobby', () => new LobbyScreen(this, { onLeave: () => this.leaveRoom() }));
   }
 
   leaveRoom() {
+    const wasPublic = this.room?.public;
     this.net.send({ type: 'leaveRoom' });
     this.room = null;
-    this.showFriends();
+    if (wasPublic) this.showOnline();
+    else this.showFriends();
   }
 
   leaveOnline() {
@@ -330,8 +340,15 @@ export default class Game {
   showOnlineResults(results, setup) {
     this.state.hud?.dispose();
     this.input.setMode('menu');
+    const quickPlay = Boolean(this.room?.public);
     this.setScreen('results', () => new ResultsScreen(this, {
-      results: results ?? [], localId: setup.youId, mode: 'race', online: true,
+      results: results ?? [], localId: setup.youId, mode: 'race', online: true, quickPlay,
+      onNextRace: () => {
+        // A quick-play room is locked after its race: leave it and search for the next one.
+        this.net.send({ type: 'leaveRoom' });
+        this.room = null;
+        this.endState(() => this.showOnline(true));
+      },
       onRematch: () => {
         const me = this.room?.players.find((p) => p.id === this.room.youId);
         if (me?.host) this.net.send({ type: 'startRace' });

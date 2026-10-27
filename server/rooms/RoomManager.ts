@@ -4,6 +4,7 @@ import { PROTOCOL_VERSION, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, type ClientMess
 import type { ServerConfig } from '../config.ts';
 import Player, { type Transport } from '../Player.ts';
 import Room, { type RoomError } from './Room.ts';
+import Matchmaker from './Matchmaker.ts';
 
 const ERROR_TEXT: Record<RoomError | 'not-found' | 'version' | 'resume-failed' | 'no-room' | 'server-full' | 'hello-first' | 'slow-down', string> = {
   'not-host': 'Only the host can do that.',
@@ -32,9 +33,21 @@ export default class RoomManager {
   readonly players = new Map<string, Player>();
   private readonly byToken = new Map<string, Player>();
   private readonly config: ServerConfig;
+  readonly matchmaker: Matchmaker;
 
   constructor(config: ServerConfig) {
     this.config = config;
+    this.matchmaker = new Matchmaker({
+      publicRooms: () => [...this.rooms.values()].filter((room) => room.isPublic),
+      createPublicRoom: (trackSeed, trackName) => {
+        if (this.rooms.size >= this.config.maxRooms) return null;
+        const code = this.newCode();
+        const room = new Room(code, null, this.config.loadTimeoutMs, { trackSeed, trackName });
+        this.rooms.set(code, room);
+        return room;
+      },
+      leaveRoom: (player) => this.leave(player)
+    });
   }
 
   private error(player: Player | Transport, code: keyof typeof ERROR_TEXT): void {
@@ -69,7 +82,26 @@ export default class RoomManager {
       case 'ping':
         player.send({ type: 'pong', t: message.t, serverTime: now() });
         return player;
+      // Name and car can be set before joining a room (quick play sets them, then searches).
+      case 'setName':
+        if (room) room.setName(player, message.name);
+        else player.name = message.name;
+        return player;
+      case 'setVehicle':
+        if (room) room.setVehicle(player, message.vehicleId);
+        player.vehicleId = message.vehicleId;
+        return player;
+      case 'queueJoin':
+        this.matchmaker.join(player);
+        return player;
+      case 'queueLeave':
+        this.matchmaker.leave(player);
+        return player;
+      case 'matchAccept':
+        this.matchmaker.accept(player, message.offerId);
+        return player;
       case 'createRoom':
+        this.matchmaker.leave(player);
         if (!this.allowCreate(player)) {
           this.error(player, 'slow-down');
           return player;
@@ -91,11 +123,13 @@ export default class RoomManager {
           return player;
         }
         if (target === room) return player;
-        const problem = target.canJoin();
+        // Quick-play rooms are only reached through the matchmaker.
+        const problem = target.isPublic ? 'in-progress' : target.canJoin();
         if (problem) {
           this.error(player, problem);
           return player;
         }
+        this.matchmaker.leave(player);
         if (room) this.leave(player);
         target.add(player);
         return player;
@@ -116,13 +150,6 @@ export default class RoomManager {
     switch (message.type) {
       case 'setReady':
         room.setReady(player, message.ready);
-        break;
-      case 'setVehicle':
-        room.setVehicle(player, message.vehicleId);
-        player.vehicleId = message.vehicleId;
-        break;
-      case 'setName':
-        room.setName(player, message.name);
         break;
       case 'updateSettings':
         problem = room.updateSettings(player, message.settings);
@@ -185,13 +212,15 @@ export default class RoomManager {
     const room = player.room;
     if (!room) return;
     room.remove(player);
-    if (room.isEmpty) this.closeRoom(room);
+    // An empty quick-play room survives while someone holds an offer for it.
+    if (room.isEmpty && room.reserved === 0) this.closeRoom(room);
   }
 
   disconnected(player: Player, transport: Transport): void {
     if (player.transport !== transport) return;
     player.transport = null;
     player.disconnectedAt = now();
+    this.matchmaker.forget(player);
     player.room?.disconnected(player);
   }
 
@@ -202,6 +231,7 @@ export default class RoomManager {
 
   /** Called every few ms: steps races. */
   update(now: number): void {
+    this.matchmaker.update(now);
     for (const room of this.rooms.values()) room.update(now);
   }
 
@@ -219,11 +249,13 @@ export default class RoomManager {
         continue;
       }
       if (room) this.leave(player);
+      this.matchmaker.forget(player);
       this.players.delete(player.id);
       this.byToken.delete(player.token);
       this.roomCreations.delete(player.id);
     }
     for (const room of [...this.rooms.values()]) {
+      if (room.reserved > 0) continue;
       if (room.isEmpty || room.players.every((p) => !p.connected && now - p.disconnectedAt > this.config.raceGraceMs)) {
         for (const p of room.players) {
           this.players.delete(p.id);
@@ -235,6 +267,6 @@ export default class RoomManager {
   }
 
   stats() {
-    return { rooms: this.rooms.size, players: this.players.size, racing: [...this.rooms.values()].filter((r) => r.state === 'racing').length };
+    return { rooms: this.rooms.size, players: this.players.size, racing: [...this.rooms.values()].filter((r) => r.state === 'racing').length, ...this.matchmaker.stats() };
   }
 }

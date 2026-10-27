@@ -271,7 +271,6 @@ function sundownRoadster() {
   }
   k.panel('Windscreen', [-0.42, 0.38], [-0.22, 0.66], 1.4, m.glass, 0);
   k.bar('WindscreenTop', [-0.7, 0.66, -0.22], [0.7, 0.66, -0.22], 0.015, m.chrome);
-  k.cyl('SteeringWheel', 0.17, 0.03, [-0.33, 0.6, -0.02], m.black, 'z', 16);
   k.headlights({ z: -2.08, y: 0.22, x: 0.62, round: 0.13 });
   k.box('Grille', [0.5, 0.14, 0.04], [0, 0.02, -2.08], m.black);
   k.box('GrilleSurround', [0.56, 0.2, 0.03], [0, 0.02, -2.065], m.chrome, { radius: 0.05 });

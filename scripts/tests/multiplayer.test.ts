@@ -4,7 +4,7 @@ import { startServer, type RunningServer } from '../../server/index.ts';
 import { loadConfig } from '../../server/config.ts';
 import { setTimeScale } from '../../server/clock.ts';
 import { trackFingerprint } from '../../shared/track/fingerprint.ts';
-import { CAR_FLAG } from '../../shared/net/protocol.ts';
+import { CAR_FLAG, PROTOCOL_VERSION } from '../../shared/net/protocol.ts';
 import { TestClient } from './netClient.ts';
 
 const TIME_SCALE = 3;
@@ -184,7 +184,7 @@ test('disconnect mid-race: a bot takes over, the player resumes with a token and
   const back = new TestClient(url);
   clients.push(back);
   await back.open();
-  back.send({ type: 'resume', v: 1, token });
+  back.send({ type: 'resume', v: PROTOCOL_VERSION, token });
   const welcome = await back.waitFor('welcome');
   assert.equal(welcome.playerId, benId);
   await back.waitFor('raceSetup');
@@ -197,7 +197,7 @@ test('disconnect mid-race: a bot takes over, the player resumes with a token and
   const stale = new TestClient(url);
   clients.push(stale);
   await stale.open();
-  stale.send({ type: 'resume', v: 1, token: 'x'.repeat(30) });
+  stale.send({ type: 'resume', v: PROTOCOL_VERSION, token: 'x'.repeat(30) });
   assert.equal((await stale.waitFor('error')).code, 'resume-failed');
   a.send({ type: 'leaveRoom' });
   back.send({ type: 'leaveRoom' });
@@ -251,4 +251,47 @@ test('one IP cannot open unlimited sockets, and silent sockets are dropped', asy
   a.close();
   b.close();
   await strict.close();
+});
+
+test('quick play: 3 players accept, the countdown runs, the race starts and the room locks', async () => {
+  const players = await Promise.all(['Q1', 'Q2', 'Q3'].map((name) => connect(name)));
+  for (const p of players) p.send({ type: 'queueJoin' });
+  for (const p of players) {
+    const found = await p.waitFor('matchFound');
+    p.send({ type: 'matchAccept', offerId: found.offerId });
+  }
+  const rooms = await Promise.all(players.map((p) => p.waitFor('room', (m) => m.public && m.players.length === 3)));
+  assert.equal(new Set(rooms.map((r) => r.code)).size, 1, 'all three land in the same public room');
+  const counting = await players[0].waitFor('room', (m) => m.public && m.countdownEndsAt > 0);
+  assert.ok(counting.players.every((p) => p.ready), 'accepting is the ready press');
+  const setups = await Promise.all(players.map((p) => p.waitFor('raceSetup', () => true, 15000)));
+  assert.equal(setups[0].setup.participants.length, 3, 'no bots in quick play');
+
+  // The started room is closed: a newcomer is matched elsewhere and cannot join it by code.
+  const late = await connect('Late');
+  late.send({ type: 'joinRoom', code: rooms[0].code });
+  assert.equal((await late.waitFor('error')).code, 'in-progress');
+  late.send({ type: 'queueJoin' });
+  const offer = await late.waitFor('matchFound');
+  late.send({ type: 'matchAccept', offerId: offer.offerId });
+  const other = await late.waitFor('room', (m) => m.public);
+  assert.notEqual(other.code, rooms[0].code, 'a started room never takes new players');
+  for (const p of [...players, late]) p.send({ type: 'leaveRoom' });
+});
+
+test('quick play: a match not accepted within 10 s lapses and frees the seat', async () => {
+  const idle = await connect('Idle');
+  idle.send({ type: 'queueJoin' });
+  const found = await idle.waitFor('matchFound');
+  const expired = await idle.waitFor('matchExpired', () => true, 8000);
+  assert.equal(expired.offerId, found.offerId);
+  assert.equal((await idle.waitFor('queueStatus', (m) => !m.searching)).searching, false, 'search stops');
+  idle.send({ type: 'matchAccept', offerId: found.offerId });
+  const keen = await connect('Keen');
+  keen.send({ type: 'queueJoin' });
+  const offer = await keen.waitFor('matchFound');
+  keen.send({ type: 'matchAccept', offerId: offer.offerId });
+  const room = await keen.waitFor('room', (m) => m.public);
+  assert.equal(room.players.length, 1, 'the lapsed seat went back to the pool; the idle player never joined');
+  keen.send({ type: 'leaveRoom' });
 });

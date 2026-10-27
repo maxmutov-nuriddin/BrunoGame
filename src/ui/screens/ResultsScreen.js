@@ -7,7 +7,7 @@ const ms = (ticks) => (ticks >= 0 ? (ticks / TICK_RATE) * 1000 : -1);
 
 /** Final standings. Buttons depend on solo/online and host status. */
 export default class ResultsScreen {
-  constructor(game, { results, localId, mode, online, recordNote, onRestart, onSetup, onMenu, onRematch, onLobby }) {
+  constructor(game, { results, localId, mode, online, quickPlay = false, recordNote, onRestart, onSetup, onMenu, onRematch, onLobby, onNextRace }) {
     this.game = game;
     this.online = online;
     this.localId = localId;
@@ -33,7 +33,10 @@ export default class ResultsScreen {
           </tbody>
         </table>
         <footer class="screen__footer" data-actions>
-          ${online
+          ${quickPlay
+            ? `<button class="btn btn--primary btn--big" data-act="next">Find next race</button>
+               <button class="btn btn--ghost" data-act="menu">Main menu</button>`
+            : online
             ? `<button class="btn btn--primary btn--big" data-act="rematch">Rematch</button>
                <button class="btn btn--big" data-act="lobby">Back to lobby</button>
                <button class="btn btn--ghost" data-act="menu">Leave room</button>`
@@ -43,14 +46,15 @@ export default class ResultsScreen {
         </footer>
         <p class="status-line" data-status></p>
       </section>`);
-    onAction(this.el, { restart: onRestart, setup: onSetup, menu: onMenu, rematch: onRematch, lobby: onLobby }, (act) => game.audio.play(act === 'menu' ? 'uiBack' : 'ui'));
+    onAction(this.el, { restart: onRestart, setup: onSetup, menu: onMenu, rematch: onRematch, lobby: onLobby, next: onNextRace }, (act) => game.audio.play(act === 'menu' ? 'uiBack' : 'ui'));
     game.screens.appendChild(this.el);
-    if (online && game.room) this.update(game.room);
+    this.quickPlay = quickPlay;
+    if (online && !quickPlay && game.room) this.update(game.room);
   }
 
   /** Online: reflect who is ready for the rematch. */
   update(room) {
-    if (!this.online) return;
+    if (!this.online || this.quickPlay) return;
     const me = room.players.find((p) => p.id === room.youId);
     const others = room.players.filter((p) => !p.host && p.connected);
     const waiting = others.filter((p) => !p.ready).length;

@@ -160,6 +160,12 @@ positions, speed, damage, laps or finish claims from a client, consumes at most 
 to 4 queued inputs to absorb network jitter and drops anything beyond that (no speed-hacking by flooding).
 The HUD ping is the median of the last 10 round trips.
 
+**Quick play (Play Online):** Start searches; the server offers a seat in a random open public room (a new
+one with a random named map if none has space) and holds it for 10 s. "Ready" joins; letting it lapse
+frees the seat and stops your search. With 3 players in, a 15 s countdown lets more join (up to 8, no bots),
+then the race starts and the room locks: it never appears in searches again and cannot be joined by code.
+After the race, "Find next race" searches again (`server/rooms/Matchmaker.ts`, protocol v2).
+
 **Lobby:** 6-character room codes (collision-checked) shown large with a QR code of the invite link
 `?room=CODE` (copy link / copy code buttons; on `localhost` the page says to open it via the LAN address so
 a phone can scan it), car cards with stats (the 3D car behind updates on pick), 2–8 slots, bots fill empty
@@ -244,7 +250,7 @@ run online races.
 
 Run on an Apple M2 laptop, Chrome, Node 24 (2026‑10‑24):
 
-* `npm test`: type-check clean, 32/32 tests (9 vehicle, 16 race, 7 multiplayer).
+* `npm test`: type-check clean, 34/34 tests (9 vehicle, 16 race, 9 multiplayer).
 * Browser, solo: loading → menu → setup → intro → countdown → race → results → *Race again*, 6 cars,
   60 fps (display-capped) in a race; GPU geometry/texture counts stable across 4 race→menu cycles; JS heap
   returns to ~60 MB after GC.

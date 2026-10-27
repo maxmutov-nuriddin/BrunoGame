@@ -8,6 +8,7 @@ import { qrSvg } from '../qr.js';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 import { TRACK_PRESETS, randomPreset, trackForSeed } from '../../../shared/track/presets.ts';
 import { LAYOUT_LABELS, THEME_LABELS, drawTrackPreview, trackFacts } from '../trackPreview.js';
+import { MATCH_MIN_PLAYERS } from '../../../shared/constants.ts';
 import { normalizeSeedCode } from '../../../shared/rng.ts';
 
 /** Private room: invite (code, QR, link), players, car choice, the host's race settings and ready state. */
@@ -18,7 +19,7 @@ export default class LobbyScreen {
       <section class="screen lobby">
         <header class="screen__header">
           <button class="btn btn--ghost" data-act="leave">← Leave</button>
-          <h2>Private room</h2>
+          <h2 data-title>Private room</h2>
         </header>
         <div class="lobby__grid">
           <div class="panel lobby__invite">
@@ -148,6 +149,10 @@ export default class LobbyScreen {
       </li>`)
       .join('') + (room.botSlots ? `<li class="is-bot"><b>+${room.botSlots} bot${room.botSlots === 1 ? '' : 's'}</b><small>fill the empty slots</small></li>` : '');
 
+    // Quick play: no invite, no host settings, no ready/start; the server starts the race by itself.
+    this.el.classList.toggle('is-public', Boolean(room.public));
+    $(this.el, '[data-title]').textContent = room.public ? 'Quick race' : 'Private room';
+    if (room.public) this.startCountdownTicker();
     const s = room.settings;
     const preset = TRACK_PRESETS.find((t) => t.seed === s.trackSeed);
     if (this.previewSeed !== s.trackSeed) {
@@ -184,7 +189,26 @@ export default class LobbyScreen {
     start.hidden = !host;
     start.disabled = !allReady || room.state === 'loading' || room.state === 'racing';
     const status = room.state === 'loading' ? 'Loading race…' : room.state === 'racing' ? 'Race in progress' : host ? (allReady ? 'Everyone is ready.' : 'Waiting for everyone to be ready…') : me?.ready ? 'Waiting for the host to start…' : 'Press Ready when you are set.';
-    $(this.el, '[data-status]').textContent = status;
+    $(this.el, '[data-status]').textContent = room.public ? this.publicStatus() : status;
+    if (room.public) {
+      ready.hidden = true;
+      start.hidden = true;
+    }
+  }
+
+  publicStatus() {
+    const room = this.room;
+    if (room.state !== 'lobby') return 'Race starting…';
+    if (room.countdownEndsAt > 0) return `Race starts in ${Math.max(0, Math.ceil((room.countdownEndsAt - this.game.net.serverNow()) / 1000))} s · more players can still join`;
+    const present = room.players.filter((p) => p.connected).length;
+    return `Waiting for players: ${present}/${MATCH_MIN_PLAYERS} needed to start`;
+  }
+
+  startCountdownTicker() {
+    if (this.ticker) return;
+    this.ticker = setInterval(() => {
+      if (this.room?.public) $(this.el, '[data-status]').textContent = this.publicStatus();
+    }, 250);
   }
 
   async copy(text, done) {
@@ -197,6 +221,7 @@ export default class LobbyScreen {
   }
 
   dispose() {
+    clearInterval(this.ticker);
     this.el.remove();
   }
 }

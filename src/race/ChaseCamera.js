@@ -19,6 +19,8 @@ const MOUNTS = {
   cockpit: { offset: new THREE.Vector3(-0.33, 0.72, 0.1), look: new THREE.Vector3(-0.33, 0.55, -30), fov: 72 }
 };
 const MOUNT_ROTATION_SMOOTHING = 18;
+const MOUNTED_NEAR = 0.05;
+const CHASE_NEAR = 0.3;
 /** Rear-view mirror camera: roof height above the windscreen, looking back down the road. */
 const MIRROR = { offset: new THREE.Vector3(0, 1.05, 0.0), look: new THREE.Vector3(0, 0.8, 40), fov: 42 };
 
@@ -53,6 +55,7 @@ export default class ChaseCamera {
   /** `mount` overrides the built-in first-person mount (each car's cockpit has its own eye point). */
   update(dt, frame, { maxSpeed, lookBack = false, raycast = null, mode = 'chase', mount = undefined }) {
     if (MOUNTS[mode]) return this.updateMounted(dt, frame, maxSpeed, lookBack, mount ?? MOUNTS[mode]);
+    this.setNear(CHASE_NEAR);
     flatForward.set(0, 0, -1).applyQuaternion(frame.quaternion).setY(0);
     if (flatForward.lengthSq() < 1e-4) flatForward.set(0, 0, -1);
     flatForward.normalize();
@@ -112,7 +115,15 @@ export default class ChaseCamera {
     this.mirror.lookAt(target);
   }
 
+  /** Near plane: short inside the cabin (pillars and wheel are close), normal outside. */
+  setNear(near) {
+    if (this.camera.near === near) return;
+    this.camera.near = near;
+    this.camera.updateProjectionMatrix();
+  }
+
   updateMounted(dt, frame, maxSpeed, lookBack, mount) {
+    this.setNear(MOUNTED_NEAR);
     const speedRatio = Math.min(1, frame.speed / maxSpeed);
     this.camera.position.copy(mount.offset).applyQuaternion(frame.quaternion).add(frame.position);
     const look = mount.look.clone();
