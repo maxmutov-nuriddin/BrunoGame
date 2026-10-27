@@ -1,4 +1,4 @@
-import { DEFAULT_VEHICLE, findVehicle } from '../../shared/vehicles.ts';
+import { DEFAULT_VEHICLE, VEHICLES, findVehicle } from '../../shared/vehicles.ts';
 
 const SETTINGS_KEY = 'bruno-race:settings';
 const RECORDS_KEY = 'bruno-race:records';
@@ -38,7 +38,8 @@ const defaults = () => ({
   rearMirror: true,
   volume: { master: 0.8, music: 0.5, sfx: 0.8 },
   bindings: structuredClone(DEFAULT_BINDINGS),
-  serverUrl: ''
+  serverUrl: '',
+  unlockedVehicles: []
 });
 
 function readJson(key) {
@@ -58,6 +59,17 @@ function writeJson(key, value) {
     // Private mode or blocked storage: settings still work for this session.
     return false;
   }
+}
+
+const HIDDEN_IDS = new Set(VEHICLES.filter((v) => v.hidden).map((v) => v.id));
+
+/** Hidden cars this device unlocked with a promo code; anything else in storage is dropped. */
+const validUnlocks = (list) => (Array.isArray(list) ? [...new Set(list.filter((id) => HIDDEN_IDS.has(id)))] : []);
+
+/** A hidden car can only stay selected while it is unlocked. */
+export function usableVehicleId(id, unlocked) {
+  const vehicle = findVehicle(id);
+  return !vehicle.hidden || unlocked.includes(vehicle.id) ? vehicle.id : DEFAULT_VEHICLE.id;
 }
 
 const clamp01 = (value, fallback) => (typeof value === 'number' && value >= 0 && value <= 1 ? value : fallback);
@@ -80,10 +92,11 @@ function migrate(stored) {
       if (Array.isArray(keys) && keys.every((k) => typeof k === 'string' && k.length < 32)) bindings[action] = keys.slice(0, 3);
     }
   }
+  const unlockedVehicles = validUnlocks(stored.unlockedVehicles);
   return {
     version: SCHEMA_VERSION,
     name: typeof stored.name === 'string' ? stored.name.slice(0, 16) : '',
-    vehicleId: findVehicle(stored.vehicleId ?? legacyVehicle).id,
+    vehicleId: usableVehicleId(stored.vehicleId ?? legacyVehicle, unlockedVehicles),
     quality: QUALITY_LEVELS.includes(stored.quality) ? stored.quality : base.quality,
     reducedMotion: stored.reducedMotion === true,
     rearMirror: stored.rearMirror !== false,
@@ -95,7 +108,8 @@ function migrate(stored) {
       sfx: clamp01(stored.volume?.sfx, base.volume.sfx)
     },
     bindings,
-    serverUrl: typeof stored.serverUrl === 'string' ? stored.serverUrl.slice(0, 200) : ''
+    serverUrl: typeof stored.serverUrl === 'string' ? stored.serverUrl.slice(0, 200) : '',
+    unlockedVehicles
   };
 }
 
@@ -115,6 +129,14 @@ export default class Settings extends EventTarget {
     this.values = { ...this.values, [key]: value };
     writeJson(SETTINGS_KEY, this.values);
     this.dispatchEvent(new CustomEvent('change', { detail: { key, value } }));
+  }
+
+  /** Add a hidden car to this device's garage; returns false when it was already unlocked. */
+  unlockVehicle(id) {
+    const unlocked = this.get('unlockedVehicles');
+    if (unlocked.includes(id)) return false;
+    this.set('unlockedVehicles', validUnlocks([...unlocked, id]));
+    return true;
   }
 
   resetBindings() {

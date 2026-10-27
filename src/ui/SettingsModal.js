@@ -3,6 +3,8 @@ import { escapeHtml } from './format.js';
 import { keyLabel } from './icons.js';
 import { QUALITY_LEVELS, CAMERA_MODES } from '../core/Settings.js';
 import { sanitizeName } from '../../shared/net/protocol.ts';
+import { findVehicle } from '../../shared/vehicles.ts';
+import { redeemPromoCode } from '../core/promo.js';
 
 const ACTION_LABELS = {
   throttle: 'Accelerate', brake: 'Brake / reverse', left: 'Steer left', right: 'Steer right', handbrake: 'Handbrake / drift',
@@ -36,6 +38,12 @@ export default class SettingsModal {
               <h3>Profile</h3>
               <label class="field">Driver name <input data-name maxlength="16" /></label>
               <label class="field">Multiplayer server <input data-server placeholder="default: this host :8787" /></label>
+              <h3>Promo code</h3>
+              <form class="promo" data-promo>
+                <input data-promo-code maxlength="40" autocomplete="off" spellcheck="false" placeholder="Enter code" aria-label="Promo code" />
+                <button class="btn btn--small" type="submit">Redeem</button>
+              </form>
+              <p class="status-line" data-promo-status></p>
             </section>
             <section>
               <h3>Controls <button class="btn btn--small" data-act="resetKeys">Reset</button></h3>
@@ -68,6 +76,10 @@ export default class SettingsModal {
     const server = $(this.el, '[data-server]');
     server.value = s.get('serverUrl');
     server.addEventListener('change', () => s.set('serverUrl', server.value.trim()));
+    $(this.el, '[data-promo]').addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.redeem();
+    });
     onAction(this.el, {
       close: () => this.close(onClose),
       quality: (target) => {
@@ -105,6 +117,25 @@ export default class SettingsModal {
     $(this.el, '[data-bindings]').innerHTML = Object.entries(ACTION_LABELS)
       .map(([action, label]) => `<li><span>${escapeHtml(label)}</span>${[0, 1].map((slot) => `<button class="key" data-act="bind" data-action="${action}" data-slot="${slot}">${escapeHtml(bindings[action]?.[slot] ? keyLabel(bindings[action][slot]) : '—')}</button>`).join('')}</li>`)
       .join('');
+  }
+
+  /** A valid code adds its car to this device's garage and selects it. */
+  redeem() {
+    const input = $(this.el, '[data-promo-code]');
+    const status = $(this.el, '[data-promo-status]');
+    const vehicleId = redeemPromoCode(input.value);
+    status.classList.toggle('is-bad', !vehicleId);
+    if (!vehicleId) {
+      this.game.audio.play('uiBack');
+      status.textContent = 'Unknown code.';
+      return;
+    }
+    const isNew = this.game.settings.unlockVehicle(vehicleId);
+    this.game.settings.set('vehicleId', vehicleId);
+    this.game.audio.play('ui');
+    input.value = '';
+    const name = findVehicle(vehicleId).name;
+    status.textContent = isNew ? `Unlocked ${name}! It is now in your Garage and selected.` : `${name} is already in your Garage.`;
   }
 
   rebind(action, slot) {

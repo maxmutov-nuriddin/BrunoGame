@@ -40,6 +40,11 @@ export interface HandlingConfig {
   airControl: number;
   /** Multiplier on the nitro a clean drift earns (the per-drift cap is unchanged). */
   driftNitroRate: number;
+  /**
+   * Extra electric thrust (m/s² at standstill, fading to zero just past maxSpeed) on top of the tyres, which
+   * saturate around 1.3 g in this model. 0 for every combustion car.
+   */
+  electricThrust: number;
 }
 
 export interface VehicleDefinition {
@@ -49,6 +54,8 @@ export interface VehicleDefinition {
   role: string;
   file: string;
   handling: HandlingConfig;
+  /** Not offered in garages, lobbies or to bots unless unlocked (promo-code cars). */
+  hidden?: boolean;
 }
 
 const BASE: HandlingConfig = {
@@ -67,7 +74,8 @@ const BASE: HandlingConfig = {
   health: 100,
   jumpImpulse: 4,
   airControl: 1,
-  driftNitroRate: 1
+  driftNitroRate: 1,
+  electricThrust: 0
 };
 
 type HandlingOverrides = Partial<Omit<HandlingConfig, 'suspension' | 'nitro'>> & {
@@ -193,8 +201,20 @@ export const VEHICLES: readonly VehicleDefinition[] = Object.freeze([
       driftGrip: 0.3, braking: 10200, suspension: { stiffness: 33 }, nitro: { strength: 1.9, speedBonus: 12, burnRate: 42 },
       health: 90
     }
+  }),
+  define({
+    id: 'phantom-e', resource: 'car-phantom-e', name: 'Phantom E', role: 'Electric hypercar: 0–100 in about 1 s, 300 km/h',
+    file: 'phantom-e.glb', hidden: true,
+    handling: {
+      mass: 1350, acceleration: 9000, electricThrust: 28, maxSpeed: 83.4, reverseSpeed: 14, steering: 0.44, steeringAtSpeed: 0.045, grip: 4.5,
+      sideGrip: 1.5, driftGrip: 0.34, braking: 22000, suspension: { stiffness: 40 }, nitro: { strength: 1.2, speedBonus: 0, burnRate: 30 },
+      health: 110
+    }
   })
 ]);
+
+/** Cars anyone can pick (garage, lobby, bots); hidden ones need an unlock. */
+export const PUBLIC_VEHICLES: readonly VehicleDefinition[] = Object.freeze(VEHICLES.filter((v) => !v.hidden));
 
 export const DEFAULT_VEHICLE = VEHICLES[0];
 

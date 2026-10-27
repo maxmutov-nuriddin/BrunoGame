@@ -82,6 +82,12 @@ export const COCKPIT_STYLES = Object.freeze({
     dash: '#0e0f12', trim: '#facc15', accent: '#facc15', frame: 'pillars',
     wheel: { type: 'flat', radius: 0.165, color: '#0e0f12', accent: '#facc15' },
     cluster: 'digital', dial: { ...DARK_DIAL, accent: '#facc15', needle: '#facc15' }, gearKmh: 36, boostGauge: true
+  },
+  'phantom-e': {
+    cabin: { belt: 0.26, screen: [[-0.72, 0.26], [-0.12, 0.56]], roof: 0.58, width: 1.3 },
+    dash: '#11151f', trim: '#3a4250', accent: '#22d3ee', frame: 'pillars',
+    wheel: { type: 'flat', radius: 0.16, color: '#11151f', accent: '#22d3ee' },
+    cluster: 'digital', dial: { ...DARK_DIAL, accent: '#22d3ee', needle: '#22d3ee' }, gearKmh: 999, boostGauge: true
   }
 });
 

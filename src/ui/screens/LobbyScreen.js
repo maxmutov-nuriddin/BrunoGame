@@ -54,7 +54,7 @@ export default class LobbyScreen {
           </div>
           <div class="panel lobby__cars">
             <h3>Your car <small data-car-name></small></h3>
-            <div class="lobby__car-cards" role="listbox" aria-label="Cars">${carCardsHtml({ compact: true })}</div>
+            <div class="lobby__car-cards" role="listbox" aria-label="Cars">${carCardsHtml({ compact: true, unlocked: game.settings.get('unlockedVehicles') })}</div>
           </div>
         </div>
         <footer class="screen__footer">

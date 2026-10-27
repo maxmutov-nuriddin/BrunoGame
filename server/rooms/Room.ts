@@ -3,7 +3,7 @@ import { trackForSeed } from '../../shared/track/presets.ts';
 import RaceSimulation, { type RaceResult } from '../../shared/race/RaceSimulation.ts';
 import type { ParticipantConfig } from '../../shared/race/RaceCar.ts';
 import { createRng } from '../../shared/rng.ts';
-import { VEHICLES } from '../../shared/vehicles.ts';
+import { PUBLIC_VEHICLES } from '../../shared/vehicles.ts';
 import { DEFAULT_ROOM_SETTINGS, type LobbyPlayer, type RaceSetup, type RoomSettings, type RoomState } from '../../shared/net/protocol.ts';
 import { MATCH_COUNTDOWN_MS, MATCH_MIN_PLAYERS } from '../../shared/constants.ts';
 import type Player from '../Player.ts';
@@ -229,7 +229,7 @@ export default class Room {
     const names = [...BOT_NAMES];
     const bots: ParticipantConfig[] = Array.from({ length: botCount }, (_, i) => {
       const name = names.splice(Math.floor(rng.next() * names.length), 1)[0] ?? `Bot ${i + 1}`;
-      return { id: `bot${i + 1}`, name, vehicleId: rng.pick(VEHICLES).id, kind: 'bot', difficulty: this.settings.botDifficulty };
+      return { id: `bot${i + 1}`, name, vehicleId: rng.pick(PUBLIC_VEHICLES).id, kind: 'bot', difficulty: this.settings.botDifficulty };
     });
     // Seeded shuffle of the grid so pole position is not always the host.
     const all = [...humans, ...bots];

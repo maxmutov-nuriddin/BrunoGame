@@ -1,5 +1,5 @@
 import { createRng } from '../../shared/rng.ts';
-import { VEHICLES } from '../../shared/vehicles.ts';
+import { PUBLIC_VEHICLES } from '../../shared/vehicles.ts';
 import { trackForSeed } from '../../shared/track/presets.ts';
 import { TICK_RATE } from '../../shared/constants.ts';
 import Settings, { Records } from '../core/Settings.js';
@@ -266,7 +266,7 @@ export default class Game {
     const bots = Array.from({ length: setup.bots }, (_, i) => ({
       id: `bot${i + 1}`,
       name: names.splice(Math.floor(rng.next() * names.length), 1)[0],
-      vehicleId: rng.pick(VEHICLES).id,
+      vehicleId: rng.pick(PUBLIC_VEHICLES).id,
       kind: 'bot',
       difficulty: setup.difficulty
     }));

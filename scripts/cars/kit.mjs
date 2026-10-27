@@ -15,6 +15,7 @@ const CABIN_BEVEL = 0.04;
 const GLASS_OFFSET = 0.045;
 const TIRE_SEGMENTS = 22;
 const RIM_RADIUS = 0.235;
+const TURBINE_TWIST = 0.45;
 
 const standard = (name, color, extra = {}) => Object.assign(new T.MeshStandardMaterial({ color, roughness: 0.6, ...extra }), { name });
 
@@ -173,22 +174,22 @@ export function createKit(name, colors) {
         bar('WingPost', [s * postX, baseY, z + 0.05], [s * postX, y - 0.02, z], 0.025, m.black);
       }
     },
-    /** Four wheels on the physics contract; widths can differ front/rear. rim: alloy | black | white | aero. */
+    /** Four wheels on the physics contract; widths can differ front/rear. rim: alloy | black | white | aero | turbine. */
     wheels({ front = 0.26, rear = front, rim = 'alloy', spokes = 5 } = {}) {
-      const rimMaterial = rim === 'black' ? m.rimBlack : rim === 'white' ? m.rimWhite : m.alloy;
+      const rimMaterial = rim === 'black' || rim === 'turbine' ? m.rimBlack : rim === 'white' ? m.rimWhite : m.alloy;
       [[0, -1, -1], [1, 1, -1], [2, -1, 1], [3, 1, 1]].forEach(([index, side, end]) => {
         const node = new T.Group();
         node.name = `Wheel_${index}`;
         node.position.set(side * WHEEL_X, WHEEL_Y, end * WHEEL_Z);
         car.add(node);
-        buildWheel(add, node, { width: end < 0 ? front : rear, side, rimMaterial, rubber: m.rubber, hub: m.chrome, spokes, aero: rim === 'aero' ? m.paint : null });
+        buildWheel(add, node, { width: end < 0 ? front : rear, side, rimMaterial, rubber: m.rubber, hub: m.chrome, spokes, aero: rim === 'aero' ? m.paint : null, turbine: rim === 'turbine' ? m.nitro : null });
       });
     }
   };
 }
 
 /** Rounded tyre with two tread grooves (lathe), rim barrel, spokes or an aero cover, centre cap. */
-function buildWheel(add, node, { width, side, rimMaterial, rubber, hub, spokes, aero }) {
+function buildWheel(add, node, { width, side, rimMaterial, rubber, hub, spokes, aero, turbine }) {
   const h = width / 2;
   const r = WHEEL_RADIUS;
   const profile = [
@@ -210,6 +211,14 @@ function buildWheel(add, node, { width, side, rimMaterial, rubber, hub, spokes, 
     const cover = new T.CylinderGeometry(RIM_RADIUS - 0.005, RIM_RADIUS - 0.005, 0.02, TIRE_SEGMENTS);
     cover.rotateZ(Math.PI / 2);
     add(cover, aero, 'AeroCover', [faceX, 0, 0], [0, 0, 0], node);
+  } else if (turbine) {
+    // Twisted fan blades and a glowing ring at the lip.
+    for (let i = 0; i < spokes; i++) {
+      add(new T.BoxGeometry(0.018, 0.075, RIM_RADIUS * 1.9), rimMaterial, 'Spoke', [faceX, 0, 0], [(i * Math.PI) / spokes, 0, side * TURBINE_TWIST], node);
+    }
+    const ring = new T.TorusGeometry(RIM_RADIUS - 0.012, 0.007, 4, TIRE_SEGMENTS);
+    ring.rotateY(Math.PI / 2);
+    add(ring, turbine, 'RimGlow', [faceX + side * 0.005, 0, 0], [0, 0, 0], node);
   } else {
     for (let i = 0; i < spokes; i++) {
       add(new T.BoxGeometry(0.03, 0.05, RIM_RADIUS * 1.9), rimMaterial, 'Spoke', [faceX, 0, 0], [(i * Math.PI) / spokes, 0, 0], node);

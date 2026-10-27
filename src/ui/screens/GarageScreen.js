@@ -16,7 +16,7 @@ export default class GarageScreen {
           <h2>Garage</h2>
         </header>
         <div class="garage__cards" role="listbox" aria-label="Cars">
-          ${carCardsHtml()}
+          ${carCardsHtml({ unlocked: game.settings.get('unlockedVehicles') })}
         </div>
         <footer class="garage__footer">
           <div class="garage__detail" data-detail></div>

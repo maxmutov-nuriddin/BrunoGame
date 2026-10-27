@@ -110,6 +110,11 @@ Twelve cars. 0–60 km/h and top speed (without nitro) measured on flat ground w
 | Sundown Roadster | Best grip and handling | 3.6 s | 126 km/h | 1050 kg | 75 |
 | Hornet RS | Nitro specialist: strongest boost, burns fast | 3.8 s | 129 km/h | 1200 kg | 90 |
 
+**Promo car.** Phantom E (electric hypercar, 0–100 in 1.0 s, 300 km/h) is hidden from the garage, the lobby
+and the bots. Redeeming its promo code in Settings → Promo code unlocks it on that device (stored in
+localStorage). Only a salted SHA-256 hash of the code is in the source (`src/core/promo.js`). The server does
+not check unlocks yet, so this is a local unlock, not anti-cheat.
+
 ## Architecture
 
 ```

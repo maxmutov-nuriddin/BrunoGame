@@ -115,6 +115,10 @@ button, input, select, textarea { font: inherit; }
 .car-card b { font: italic 800 1.15rem var(--display); text-transform: uppercase; }
 .car-card small { color: var(--muted); min-height: 2.4em; }
 .car-card[aria-selected='true'] { border-color: var(--hot); box-shadow: inset 0 0 0 1px var(--hot), 0 10px 30px rgba(255, 46, 99, 0.25); }
+.car-card--promo { border-color: rgba(34, 211, 238, 0.55); background: linear-gradient(135deg, rgba(34, 211, 238, 0.14), var(--glass)); }
+.car-card--promo b::after { content: ' ⚡ PROMO'; color: #22d3ee; font-size: 0.7rem; letter-spacing: 0.08em; }
+.promo { display: flex; gap: 8px; margin-bottom: 6px; }
+.promo input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 0.06em; }
 .car-card dl { margin: 8px 0 0; display: grid; gap: 5px; }
 .car-card dl div { display: grid; grid-template-columns: 82px 1fr; align-items: center; gap: 8px; font-size: 0.72rem; color: var(--muted); }
 .car-card dt { margin: 0; }

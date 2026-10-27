@@ -2,7 +2,8 @@
 // contract: front -Z, origin at the chassis centre, Wheel_0..3, materials Paint and BrakeLights.
 // Profiles are [z, y] points from the front bumper to the rear; heights are relative to the chassis centre
 // (ground is at y = -0.63).
-import { createKit } from './kit.mjs';
+import * as T from 'three';
+import { createKit, WHEEL_Y, WHEEL_Z } from './kit.mjs';
 
 /** Windscreen, rear window and side glass for a cabin outline [baseFront, roofFront, roofRear, baseRear]. */
 function glassFor(k, outline, width, side) {
@@ -309,6 +310,78 @@ function hornetRs() {
   return k.car;
 }
 
+/**
+ * Promo-code electric hypercar, styled unlike the rest: smoked teardrop canopy, floating fender arcs,
+ * blade lights instead of headlamps, twin dorsal fins instead of a wing, turbine rims. No exhaust pipes:
+ * the nitro emitters sit hidden in the diffuser.
+ */
+function phantomE() {
+  const k = createKit('PhantomE', { paint: '#101c3f', accent: '#22d3ee' });
+  const { m } = k;
+  k.body({ width: 1.92, top: [[-2.3, -0.2], [-2.27, -0.06], [-1.95, 0.07], [-1.45, 0.16], [-0.85, 0.22], [-0.4, 0.25], [0.9, 0.28], [1.65, 0.3], [2.18, 0.22], [2.3, 0.02]] });
+  const canopy = [[-0.75, 0.24], [-0.25, 0.52], [0.15, 0.6], [0.7, 0.57], [1.25, 0.42], [1.75, 0.29]];
+  k.cabin({ outline: canopy, width: 1.34, material: m.black });
+  k.panel('Windscreen', [-0.72, 0.26], [-0.12, 0.56], 1.18);
+  k.sideGlass([[-0.6, 0.31], [-0.22, 0.51], [0.15, 0.57], [0.7, 0.54], [1.15, 0.41], [1.3, 0.33]], 0.67);
+  for (const s of [-1, 1]) {
+    // Glowing belt line wrapping the canopy, and a halo along its crown.
+    k.bar('CanopyGlow', [s * 0.68, 0.26, -0.72], [s * 0.68, 0.3, 1.7], 0.008, m.nitro);
+    k.bar('CanopyHalo', [s * 0.45, 0.6, 0.0], [s * 0.45, 0.47, 1.15], 0.006, m.nitro);
+  }
+  fenderArcs(k);
+  bladeNose(k);
+  for (const s of [-1, 1]) {
+    k.box('SideBlade', [0.06, 0.07, 1.65], [s * 0.99, -0.3, 0], m.black, { radius: 0.01 });
+    k.box('GroundGlow', [0.02, 0.012, 1.5], [s * 0.96, -0.42, 0], m.nitro, { radius: 0 });
+    k.box('DoorScoop', [0.05, 0.16, 0.62], [s * 0.975, 0.05, 0.62], m.black, { radius: 0.02, rotation: [0.32, 0, 0] });
+    // Twin dorsal fins replace the usual wing.
+    k.box('DorsalFin', [0.025, 0.2, 0.75], [s * 0.36, 0.38, 1.5], m.paint, { radius: 0.01, rotation: [-0.12, 0, 0] });
+    k.box('FinEdge', [0.012, 0.012, 0.7], [s * 0.36, 0.475, 1.47], m.nitro, { radius: 0 });
+    k.box('CameraPod', [0.06, 0.035, 0.12], [s * 0.78, 0.33, -0.55], m.black, { radius: 0.012 });
+  }
+  bladeTail(k);
+  k.wheels({ front: 0.26, rear: 0.31, rim: 'turbine', spokes: 7 });
+  return k.car;
+}
+
+/** Arcs floating proud of the wheel arches, in paint with a lit inner edge. */
+function fenderArcs(k) {
+  const { m } = k;
+  const flare = new T.TorusGeometry(0.47, 0.055, 6, 14, Math.PI);
+  flare.rotateY(Math.PI / 2);
+  const glow = new T.TorusGeometry(0.43, 0.007, 4, 14, Math.PI);
+  glow.rotateY(Math.PI / 2);
+  for (const z of [-WHEEL_Z, WHEEL_Z]) {
+    for (const s of [-1, 1]) {
+      k.add(flare, m.paint, 'FenderArc', [s * 0.99, WHEEL_Y, z]);
+      k.add(glow, m.nitro, 'ArcGlow', [s * 1.02, WHEEL_Y, z]);
+    }
+  }
+}
+
+/** No headlamps: one full-width light blade, fang DRLs at the corners, a slatted intake and a lit badge. */
+function bladeNose(k) {
+  const { m } = k;
+  k.box('LightBlade', [1.7, 0.018, 0.04], [0, -0.02, -2.28], m.headlight, { radius: 0 });
+  for (const s of [-1, 1]) k.box('FangDRL', [0.03, 0.16, 0.04], [s * 0.86, -0.1, -2.26], m.headlight, { radius: 0.006 });
+  k.box('Intake', [1.3, 0.16, 0.06], [0, -0.26, -2.27], m.black, { radius: 0.02 });
+  for (const y of [-0.22, -0.26, -0.3]) k.box('IntakeSlat', [1.24, 0.008, 0.07], [0, y, -2.275], m.trim, { radius: 0 });
+  k.box('Badge', [0.14, 0.03, 0.02], [0, 0.11, -2.03], m.nitro, { radius: 0.006, rotation: [-0.3, 0, 0] });
+  k.box('Splitter', [1.94, 0.03, 0.36], [0, -0.43, -2.12], m.black, { radius: 0.01 });
+  k.box('BonnetVent', [0.9, 0.02, 0.4], [0, 0.18, -1.55], m.black, { radius: 0.01, rotation: [-0.17, 0, 0] });
+}
+
+/** Arched light bar over open slats, a five-strake diffuser with the hidden nitro emitters. */
+function bladeTail(k) {
+  const { m } = k;
+  k.taillights({ z: 2.31, y: 0.16, size: [1.78, 0.025, 0.04], full: true });
+  for (const s of [-1, 1]) k.box('TailLight', [0.03, 0.18, 0.04], [s * 0.89, 0.08, 2.29], m.brake, { radius: 0.006 });
+  for (const y of [0.06, 0.0, -0.06]) k.box('TailSlat', [1.6, 0.012, 0.05], [0, y, 2.3], m.black, { radius: 0 });
+  k.box('Diffuser', [1.7, 0.14, 0.32], [0, -0.35, 2.14], m.black);
+  for (const x of [-0.6, -0.3, 0, 0.3, 0.6]) k.box('Strake', [0.02, 0.14, 0.3], [x, -0.42, 2.16], m.trim, { radius: 0 });
+  k.exhaust({ z: 2.28, y: -0.33, xs: [-0.45, 0.45], radius: 0.025 });
+}
+
 /** id → builder; ids and file names match shared/vehicles.ts. */
 export const DESIGNS = {
   'bruno-gt': nitroGt,
@@ -322,5 +395,6 @@ export const DESIGNS = {
   'volt-arrow': voltArrow,
   'kei-bolt': keiBolt,
   'sundown-roadster': sundownRoadster,
-  'hornet-rs': hornetRs
+  'hornet-rs': hornetRs,
+  'phantom-e': phantomE
 };

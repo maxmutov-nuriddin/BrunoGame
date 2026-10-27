@@ -4,6 +4,7 @@ import { VEHICLES, findVehicle } from '../../shared/vehicles.ts';
 import { flatTestbed, input } from './helpers.ts';
 
 const KMH = 3.6;
+const MIN_BRAKE_DECELERATION = 7;
 
 async function measure(id: string) {
   const bed = await flatTestbed(findVehicle(id));
@@ -38,13 +39,18 @@ test('cars accelerate, reach a distinct top speed and brake', async () => {
     results.set(vehicle.id, r);
     assert.ok(r.zeroTo100 < 12, `${vehicle.id} 0-100 ${r.zeroTo100.toFixed(2)}s`);
     assert.ok(Math.abs(r.topSpeed - vehicle.handling.maxSpeed) < 4, `${vehicle.id} top ${r.topSpeed.toFixed(1)}`);
-    assert.ok(r.brakeDistance < 120, `${vehicle.id} brake ${r.brakeDistance.toFixed(1)}m`);
+    // Judge braking by deceleration so faster cars get a proportionally longer stop (v² / 2a).
+    const deceleration = r.topSpeed ** 2 / (2 * r.brakeDistance);
+    assert.ok(deceleration > MIN_BRAKE_DECELERATION, `${vehicle.id} brake ${r.brakeDistance.toFixed(1)}m (${deceleration.toFixed(1)} m/s²)`);
   }
   const nova = results.get('nova-coupe')!;
   const pixel = results.get('pixel-hatch')!;
   const atlas = results.get('atlas-hauler')!;
   assert.ok(nova.topSpeed > atlas.topSpeed + 4, 'Nova is the fastest at the top end');
   assert.ok(pixel.zeroTo60 < nova.zeroTo60, `Pixel launches harder than Nova (${pixel.zeroTo60.toFixed(2)} vs ${nova.zeroTo60.toFixed(2)})`);
+  const phantom = results.get('phantom-e')!;
+  assert.ok(phantom.zeroTo100 <= 1.1, `Phantom E does 0-100 in about 1 s (${phantom.zeroTo100.toFixed(2)})`);
+  assert.ok(Math.abs(phantom.topSpeed * KMH - 300) < 8, `Phantom E tops out near 300 km/h (${(phantom.topSpeed * KMH).toFixed(0)})`);
   console.table([...results].map(([id, r]) => ({ id, '0-60 s': r.zeroTo60.toFixed(2), '0-100 s': r.zeroTo100.toFixed(2), 'top km/h': (r.topSpeed * KMH).toFixed(0), 'brake m': r.brakeDistance.toFixed(1) })));
 });
 
