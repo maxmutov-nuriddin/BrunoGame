@@ -11,10 +11,15 @@ const SPEEDO_STEP = 20;
 const REV_MAX = 8;
 const LOOK_DROP = 0.17;
 const LOOK_DISTANCE = 30;
-const COCKPIT_FOV = 72;
+const COCKPIT_FOV = 75;
+/** Instruments sit this far below and ahead of the eyes (wheel and dash follow), keeping the road in view. */
+const CLUSTER_DROP = 0.36;
+const CLUSTER_REACH = 1.2;
 const WHEEL_TILT = { bus: -0.95, default: -0.45 };
-/** The model's body top sits about this far above its belt line (extrusion bevel), so the dash goes higher. */
-const DASH_LIFT = 0.07;
+/** Instrument anchor above the belt line: keeps the dash top (anchor + 0.05) clear of the body's top surface. */
+const CUTAWAY_ABOVE_BELT = 0.12;
+/** Cabin floor below the belt line, visible past the dash and steering wheel. */
+const FLOOR_BELOW_BELT = 0.3;
 
 /**
  * Driver's-eye interior for cockpit camera mode, different for every car (cockpit/styles.js) and built
@@ -35,12 +40,16 @@ export default class Cockpit {
     const [base, top] = cabin.screen;
     // Driver's eyes inside the real cabin: under the roof, behind the windscreen top (open cars: behind the screen).
     const ex = -Math.min(0.33, cabin.width / 2 - 0.42);
-    const ey = cabin.roof !== null ? Math.min(cabin.belt + 0.32, cabin.roof - 0.16) : cabin.belt + 0.42;
+    const ey = cabin.roof !== null ? Math.min(cabin.belt + 0.36, cabin.roof - 0.1) : cabin.belt + 0.34;
     // Open cars sit as far behind their windscreen base as roofed ones, so the dash stays in view.
     const ez = cabin.roof !== null ? top[0] + 0.35 : base[0] + 0.95;
     this.eye = { x: ex, y: ey, z: ez };
-    /** Dashboard anchor: behind the windscreen base, above the body's top surface (belt + bevel). */
-    this.dash = { y: cabin.belt + DASH_LIFT, z: base[0] };
+    // Laid out from the eyes, not the windscreen, so the wheel and dash never come too close or too high.
+    // Low cars keep the instruments above the body's top surface (belt + bevel) instead.
+    // The dash top never sits below the cutaway line, so it always closes the cut-open body at the windscreen.
+    this.dash = { y: Math.max(ey - CLUSTER_DROP, cabin.belt + CUTAWAY_ABOVE_BELT - 0.05), z: ez - CLUSTER_REACH };
+    /** The car model's solid body is cut away behind this z and below this y (see RaceView), so the cabin is hollow. */
+    this.cutaway = { z: base[0] - 0.02, y: cabin.belt + CUTAWAY_ABOVE_BELT };
     this.mount = {
       offset: new THREE.Vector3(ex, ey, ez),
       look: new THREE.Vector3(ex, ey - LOOK_DROP, -LOOK_DISTANCE),
@@ -54,6 +63,11 @@ export default class Cockpit {
       accent: this.material(new THREE.MeshBasicMaterial({ color: style.accent })),
       wheel: this.material(new THREE.MeshStandardMaterial({ color: style.wheel.color, roughness: 0.6, metalness: 0.2 })),
       wheelAccent: this.material(new THREE.MeshStandardMaterial({ color: style.wheel.accent, roughness: 0.5 })),
+      // Light roof lining, like a real headliner; a dark one makes the top of the view feel closed in.
+      headliner: this.material(new THREE.MeshStandardMaterial({ color: '#4a5059', roughness: 0.95 })),
+      vent: this.material(new THREE.MeshStandardMaterial({ color: '#0c0d10', roughness: 0.8 })),
+      screen: this.material(new THREE.MeshStandardMaterial({ color: '#0a1220', emissive: this.style.accent, emissiveIntensity: 0.15, roughness: 0.2 })),
+      floor: this.material(new THREE.MeshStandardMaterial({ color: '#1a1c20', roughness: 1 })),
       chrome: this.material(new THREE.MeshStandardMaterial({ color: '#d9dee5', metalness: 1, roughness: 0.15 }))
     };
 
@@ -98,10 +112,28 @@ export default class Cockpit {
     const { x, z } = this.eye;
     const { mat } = this;
     const { y: belt, z: front } = this.dash;
-    const width = this.style.cabin.width - 0.08;
-    this.box([width, 0.14, 0.56], [0, belt - 0.02, front + 0.3], mat.dash, [-0.08, 0, 0]);
-    this.box([width - 0.06, 0.02, 0.02], [0, belt + 0.04, front + 0.58], mat.trim);
-    this.box([0.46, 0.03, 0.14], [x, belt + 0.2, front + 0.4], mat.dash);
+    const { cabin } = this.style;
+    const width = cabin.width - 0.08;
+    // One deep dashboard from the windscreen base back to just before the driver's knees, with a face that
+    // drops below the belt line: from the seat you see its top, never the floor or the bare body.
+    const dashTop = belt + 0.05;
+    const dashFront = cabin.screen[0][0];
+    const dashBack = front + 0.62;
+    const faceBottom = cabin.belt - 0.3;
+    this.box([width, 0.06, dashBack - dashFront], [0, dashTop - 0.03, (dashFront + dashBack) / 2], mat.dash);
+    this.box([width, dashTop - faceBottom, 0.06], [0, (dashTop + faceBottom) / 2, dashBack - 0.03], mat.dash);
+    this.box([width - 0.06, 0.02, 0.02], [0, dashTop + 0.005, dashBack - 0.01], mat.trim);
+    // Dash face details: air vents at both ends and in the middle, centre screen, glovebox on the passenger side.
+    const face = dashBack + 0.005;
+    for (const vx of [-(width / 2 - 0.12), -0.08, 0.08, width / 2 - 0.12]) {
+      this.box([0.13, 0.05, 0.012], [vx, dashTop - 0.07, face], mat.vent);
+      for (let i = 0; i < 3; i++) this.box([0.12, 0.006, 0.014], [vx, dashTop - 0.085 + i * 0.015, face + 0.002], mat.trim);
+    }
+    this.box([0.22, 0.12, 0.012], [0, dashTop - 0.17, face], mat.screen);
+    this.box([0.34, 0.14, 0.01], [width / 2 - 0.3, dashTop - 0.16, face], mat.trim);
+    this.box([0.3, 0.12, 0.012], [width / 2 - 0.3, dashTop - 0.16, face + 0.003], mat.dash);
+    // Centre tunnel between the seats, below the eye line.
+    this.box([0.24, 0.12, z + 0.4 - dashBack], [0, cabin.belt - 0.24, (dashBack + z + 0.4) / 2], mat.trim);
     this.box([0.24, 0.3, 0.6], [0, belt - 0.22, front + 0.75], mat.dash);
     this.tube([0, belt - 0.1, z - 0.3], [0, belt - 0.02, z - 0.26], 0.012, mat.chrome);
     const knob = new THREE.Mesh(this.geometry(new THREE.SphereGeometry(0.028, 12, 8)), mat.accent);
@@ -110,7 +142,7 @@ export default class Cockpit {
   }
 
   /**
-   * Inside of the real cabin: A-pillars along the windscreen edges, roof lining under the roof and door sills.
+   * Inside of the real cabin: roof lining under the roof, door sills and door panels.
    * Open cars show their own exterior windscreen frame or roll cage, so they only get sills.
    */
   buildFrame() {
@@ -120,9 +152,19 @@ export default class Cockpit {
     const [base, top] = cabin.screen;
     const half = cabin.width / 2;
     for (const side of [-1, 1]) this.box([0.05, 0.05, Math.max(0.6, z - base[0] + 0.5)], [side * (half - 0.03), cabin.belt + 0.02, (base[0] + 0.2 + z + 0.6) / 2], mat.trim);
+    // Dark cabin floor over the model's (solid) body between the dash and the seat, so no paint shows inside.
+    const floorFront = this.dash.z + 0.62;
+    this.box([cabin.width - 0.1, 0.02, z + 0.7 - floorFront], [0, cabin.belt - FLOOR_BELOW_BELT, (floorFront + z + 0.7) / 2], mat.floor);
+    // Door panels on both sides, from the dashboard back past the seat.
+    const doorFront = base[0] + 0.1;
+    const doorBack = z + 0.7;
+    for (const side of [-1, 1]) {
+      this.box([0.05, 0.42, doorBack - doorFront], [side * (half - 0.05), cabin.belt - 0.08, (doorFront + doorBack) / 2], mat.trim);
+    }
     if (cabin.roof === null) return;
-    for (const side of [-1, 1]) this.tube([side * (half - 0.06), base[1] + 0.02, base[0]], [side * (half - 0.1), cabin.roof - 0.02, top[0]], 0.03, mat.dash);
-    this.box([cabin.width - 0.12, 0.03, 0.8], [0, cabin.roof - 0.02, top[0] + 0.55], mat.dash);
+    // No A-pillars: this close to the eyes they cut across the road; the roof line frames the cabin.
+    // From just ahead of the windscreen top to the back of the roof: also hides roof stripes seen from below.
+    this.box([cabin.width - 0.08, 0.03, 1.0], [0, cabin.roof + 0.025, top[0] + 0.45], mat.headliner);
   }
 
   addInstrument(instrument, position, tilt = -0.15) {
@@ -148,41 +190,45 @@ export default class Cockpit {
   /** The gauge cluster behind the wheel, by style. Every style has a working speed readout. */
   buildCluster() {
     const { x } = this.eye;
-    const { y: belt, z: front } = this.dash;
-    // Seen through the upper half of the steering wheel, as in a real car.
-    const at = (dx, dy = 0, dz = 0) => [x + dx, belt + 0.11 + dy, front + 0.42 + dz];
+    const { y: anchor, z: front } = this.dash;
+    // On the dash face, just under the dash top and behind the wheel: seen through the wheel's upper
+    // half, never sticking up into the view of the road.
+    const top = anchor + 0.05;
+    const face = front + 0.632;
+    const at = (dx, dy = 0) => [x + dx, top - 0.075 + dy, face];
     const { style } = this;
     switch (style.cluster) {
       case 'twin':
-        this.addInstrument(this.tacho(0.075), at(-0.1));
-        this.addInstrument(this.speedo(0.075), at(0.1));
+        this.addInstrument(this.tacho(0.058), at(-0.07), 0);
+        this.addInstrument(this.speedo(0.058), at(0.07), 0);
         break;
       case 'single':
-        this.addInstrument(this.speedo(0.1), at(-0.04));
-        this.addInstrument(new Screen({ width: 0.13, height: 0.065, colors: style.dial }), at(0.14, -0.02));
+        this.addInstrument(this.speedo(0.07), at(-0.03), 0);
+        this.addInstrument(new Screen({ width: 0.1, height: 0.05, colors: style.dial }), at(0.1, -0.01), 0);
         break;
       case 'digital':
-        this.addInstrument(new Screen({ width: 0.32, height: 0.16, colors: style.dial }), at(0, 0.005));
+        this.addInstrument(new Screen({ width: 0.24, height: 0.11, colors: style.dial }), at(0), 0);
         break;
       case 'triple':
-        this.addInstrument(this.tacho(0.055), at(-0.13));
-        this.addInstrument(this.speedo(0.055), at(0));
-        this.addInstrument(this.nitroDial(0.055), at(0.13));
+        this.addInstrument(this.tacho(0.042), at(-0.095), 0);
+        this.addInstrument(this.speedo(0.042), at(0), 0);
+        this.addInstrument(this.nitroDial(0.042), at(0.095), 0);
         break;
       case 'tablet':
-        // EV: a slim speed strip behind the yoke and a landscape tablet on the centre of the dash.
-        this.addInstrument(new Screen({ width: 0.2, height: 0.07, colors: style.dial, showRevs: false }), at(0, -0.01, -0.06));
-        this.addInstrument(new Screen({ width: 0.3, height: 0.17, colors: style.dial, showRevs: false }), [0.12, belt + 0.12, front + 0.4], -0.3);
+        // EV: a slim speed strip behind the yoke and a tablet in the centre of the dash face.
+        this.addInstrument(new Screen({ width: 0.18, height: 0.06, colors: style.dial, showRevs: false }), at(0), 0);
+        this.addInstrument(new Screen({ width: 0.24, height: 0.13, colors: style.dial, showRevs: false }), [0.14, top - 0.13, face + 0.004], 0);
         break;
       default: // retro: cream twin dials plus a trio of small dials on the centre stack
-        this.addInstrument(this.tacho(0.08), at(-0.1));
-        this.addInstrument(this.speedo(0.08), at(0.1));
-        this.addInstrument(this.nitroDial(0.035), [-0.04, belt - 0.02, front + 0.55], -0.3);
-        this.addInstrument(this.tacho(0.035), [0.06, belt - 0.02, front + 0.55], -0.3);
-        this.addInstrument(this.nitroDial(0.035, 'BOOST'), [0.16, belt - 0.02, front + 0.55], -0.3);
+        this.addInstrument(this.tacho(0.06), at(-0.07), 0);
+        this.addInstrument(this.speedo(0.06), at(0.07), 0);
+        for (const [dx, dial] of [[-0.02, this.nitroDial(0.03)], [0.06, this.tacho(0.03)], [0.14, this.nitroDial(0.03, 'BOOST')]]) {
+          this.addInstrument(dial, [dx, top - 0.2, face], 0);
+        }
     }
-    if (style.boostGauge) this.addInstrument(this.nitroDial(0.05, 'BOOST'), [x - 0.42, belt + 0.25, front + 0.35], -0.2);
+    if (style.boostGauge) this.addInstrument(this.nitroDial(0.04, 'BOOST'), at(-0.24), 0);
   }
+
 
   buildWheel() {
     const { x } = this.eye;
@@ -190,7 +236,8 @@ export default class Cockpit {
     const { radius, type, spokes = 3 } = this.style.wheel;
     const { mat } = this;
     this.wheel = new THREE.Group();
-    this.wheel.position.set(x, belt - 0.02, front + 0.72);
+    // Around the gauges: rim top level with the dash top, 10 cm in front of the dash face.
+    this.wheel.position.set(x, this.dash.y + 0.05 - 0.15, front + 0.72);
     this.wheel.rotation.x = WHEEL_TILT[type] ?? WHEEL_TILT.default;
     const rimMaterial = type === 'retro' ? mat.wheelAccent : mat.wheel;
     const spokeMaterial = type === 'retro' ? mat.chrome : mat.wheel;

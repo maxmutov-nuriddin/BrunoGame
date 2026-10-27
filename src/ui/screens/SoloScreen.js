@@ -30,6 +30,7 @@ export default class SoloScreen {
         <header class="screen__header">
           <button class="btn btn--ghost" data-act="back">← Back</button>
           <h2>Play Solo</h2>
+          <button class="btn btn--primary btn--big solo__start" data-act="start">Start race</button>
         </header>
         <div class="segmented" role="tablist">
           <button data-act="mode" data-mode="race" role="tab">Race vs bots</button>
@@ -78,7 +79,6 @@ export default class SoloScreen {
             </div>
           </div>
         </div>
-        <footer class="screen__footer"><button class="btn btn--primary btn--big" data-act="start">Start race</button></footer>
       </section>`);
     this.inputs = {
       seed: $(this.el, 'input[data-seed]'), laps: $(this.el, '[data-laps]'), bots: $(this.el, '[data-bots]'),

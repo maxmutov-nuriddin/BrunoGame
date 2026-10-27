@@ -34,6 +34,8 @@ export default class Renderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = EXPOSURE;
+    // Cockpit cutaway clips the local car's body per material.
+    this.renderer.localClippingEnabled = true;
     container.appendChild(this.renderer.domElement);
     this.canvas = this.renderer.domElement;
 

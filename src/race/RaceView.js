@@ -111,7 +111,23 @@ export default class RaceView {
     const view = this.cars.get(this.localId);
     if (!view) return;
     view.group.visible = visible;
-    view.setInteriorView(interior);
+    this.cutawayPlanes ??= [new THREE.Plane(), new THREE.Plane()];
+    view.setInteriorView(interior, this.cutawayPlanes);
+  }
+
+  /**
+   * World-space planes that, together, remove the local car's body behind the windscreen base and below the
+   * cabin floor line: the cockpit sits in a hollow cabin while the bonnet, mirrors and roof stay.
+   */
+  updateCutaway(frame) {
+    if (!this.cutawayPlanes || !this.cockpit) return;
+    const { z, y } = this.cockpit.cutaway;
+    const back = tmp.set(0, 0, 1).applyQuaternion(frame.quaternion);
+    // Negative side (clipped) = behind z: distance = z - local z.
+    this.cutawayPlanes[0].set(back.clone().negate(), z + back.dot(frame.position));
+    const up = side.set(0, 1, 0).applyQuaternion(frame.quaternion);
+    // Negative side (clipped) = below y: distance = local y - y.
+    this.cutawayPlanes[1].set(up.clone(), -y - up.dot(frame.position));
   }
 
   get localCarGroup() {

@@ -318,3 +318,5 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; padding: 
 .match-offer__timer i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--cyan), var(--hot)); transition: width 0.2s linear; }
 .match-offer__seconds { font: italic 900 2rem var(--display); margin: 0; }
 .lobby.is-public .lobby__invite, .lobby.is-public [data-host-note], .lobby.is-public .field, .lobby.is-public .toggle, .lobby.is-public [data-act="randomMap"] { display: none; }
+
+.solo__start { margin-left: auto; }

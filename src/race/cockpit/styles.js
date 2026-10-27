@@ -61,13 +61,13 @@ export const COCKPIT_STYLES = Object.freeze({
   },
   'volt-arrow': {
     cabin: { belt: 0.32, screen: [[-0.7, 0.31], [0.0, 0.7]], roof: 0.7, width: 1.52 },
-    dash: '#c9ced6', trim: '#2b2f36', accent: '#38bdf8', frame: 'pillars',
+    dash: '#3a3f47', trim: '#c9ced6', accent: '#38bdf8', frame: 'pillars',
     wheel: { type: 'yoke', radius: 0.15, color: '#1c1f24', accent: '#38bdf8' },
     cluster: 'tablet', dial: { face: '#0b1117', ink: '#eaf6ff', accent: '#38bdf8', needle: '#38bdf8', bezel: '#2b2f36' }, gearKmh: 999
   },
   'kei-bolt': {
     cabin: { belt: 0.46, screen: [[-1.05, 0.44], [-0.78, 1.12]], roof: 1.13, width: 1.5 },
-    dash: '#e9efe9', trim: '#7dd3b0', accent: '#2f9e7a', frame: 'pillars',
+    dash: '#3f4a45', trim: '#7dd3b0', accent: '#2f9e7a', frame: 'pillars',
     wheel: { type: 'round', radius: 0.15, color: '#2c3330', accent: '#7dd3b0', spokes: 2 },
     cluster: 'digital', dial: { face: '#1b2622', ink: '#e8fff6', accent: '#7dd3b0', needle: '#7dd3b0', bezel: '#7dd3b0' }, gearKmh: 26
   },

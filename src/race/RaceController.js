@@ -188,6 +188,7 @@ export default class RaceController {
     const mode = this.game.settings.get('cameraMode');
     this.view.setLocalCarVisible(mode !== 'hood', mode === 'cockpit');
     this.view.cockpit?.update(me, mode === 'cockpit', dt);
+    if (mode === 'cockpit') this.view.updateCutaway(me);
     this.updateMirror(me, FIRST_PERSON.has(mode) && this.game.settings.get('rearMirror'));
     this.view.chase.update(dt, me, {
       mode,

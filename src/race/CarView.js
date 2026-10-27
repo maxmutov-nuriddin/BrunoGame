@@ -87,10 +87,14 @@ export default class CarView {
   }
 
   /** Seen from the driver's seat: glass turns see-through so the windscreen and windows can be looked out of. */
-  setInteriorView(interior) {
+  setInteriorView(interior, cutaway = null) {
     if (interior === this.interior) return;
     this.interior = interior;
     for (const material of this.materials) {
+      // Cutaway: clip the solid body inside the cabin (clipIntersection keeps everything outside the box).
+      material.clippingPlanes = interior && cutaway ? cutaway : null;
+      material.clipIntersection = true;
+      material.needsUpdate = true;
       if (material.name !== 'Glass') continue;
       material.transparent = interior || this.ghost;
       material.opacity = interior ? INTERIOR_GLASS_OPACITY : this.ghost ? GHOST_OPACITY : 1;
