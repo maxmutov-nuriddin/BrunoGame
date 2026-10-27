@@ -291,3 +291,5 @@ New and redesigned cars follow [docs/VEHICLES.md](docs/VEHICLES.md) (contract, A
 world pack by `model:world`; textures are drawn on canvases at runtime; all audio is synthesised in `src/audio/`.
 No third-party art, music or sound files are shipped. Code libraries keep their own licences
 (three.js MIT, Rapier Apache-2.0, Firebase JS SDK Apache-2.0, Vite MIT, qrcode-generator MIT; build-only: glTF-Transform MIT, meshoptimizer MIT).
+
+Promo kod: PHANTOM-EJMU-438D-N32F
