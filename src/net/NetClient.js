@@ -1,5 +1,9 @@
 import { PROTOCOL_VERSION } from '../../shared/constants.ts';
 
+/** Clock corrections are eased in at this rate (ms per ms, i.e. 5 %); larger jumps than CLOCK_SNAP_MS apply at once. */
+const CLOCK_SLEW = 0.05;
+const CLOCK_SNAP_MS = 250;
+
 const SESSION_KEY = 'bruno-race:session';
 const PING_INTERVAL_MS = 1000;
 const CLOCK_SAMPLES = 10;
@@ -42,8 +46,18 @@ export default class NetClient extends EventTarget {
     return this.state === 'connected';
   }
 
+  /**
+   * Server clock, slewed: a new offset estimate is eased in instead of applied at once, so the local
+   * simulation never jumps a tick forward or back when a ping sample lands. Big errors snap.
+   */
   serverNow() {
-    return performance.now() + this.clockOffset;
+    const now = performance.now();
+    const elapsed = now - (this.lastClockRead ?? now);
+    this.lastClockRead = now;
+    const diff = this.clockOffset - (this.appliedOffset ?? this.clockOffset);
+    if (this.appliedOffset === undefined || Math.abs(diff) > CLOCK_SNAP_MS) this.appliedOffset = this.clockOffset;
+    else this.appliedOffset += Math.max(-elapsed * CLOCK_SLEW, Math.min(elapsed * CLOCK_SLEW, diff));
+    return now + this.appliedOffset;
   }
 
   setState(state) {

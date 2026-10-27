@@ -8,6 +8,7 @@ export interface TrackPreset {
   blurb: string;
   layout: TrackLayout;
   theme: TrackTheme;
+  speedway?: boolean;
 }
 
 /**
@@ -54,7 +55,8 @@ export const TRACK_PRESETS: readonly TrackPreset[] = Object.freeze([
   { id: 'dune8', name: 'Dune Knot', seed: 'DUNEKNOT', blurb: 'Desert figure 8 with a high deck.', layout: 'figure8', theme: 'desert' },
   { id: 'aurora', name: 'Aurora Loop', seed: 'AURORA', blurb: 'Snow loop under a pale sky.', layout: 'loop', theme: 'snow' },
   { id: 'neonbay', name: 'Neon Bay', seed: 'NEONBAY', blurb: 'Night loop by the harbour.', layout: 'loop', theme: 'dusk' },
-  { id: 'sandbar', name: 'Sandbar Run', seed: 'SANDBAR', blurb: 'Sandbars and two long bridges.', layout: 'island', theme: 'island' }
+  { id: 'sandbar', name: 'Sandbar Run', seed: 'SANDBAR', blurb: 'Sandbars and two long bridges.', layout: 'island', theme: 'island' },
+  { id: 'speedway', name: 'Endless Mile', seed: 'ENDLESS', blurb: 'Dead flat, no jump, no hairpins: one long flat-out sweep for top speed.', layout: 'loop', theme: 'meadow', speedway: true }
 ]);
 
 /** A named track picked at random, never `exceptSeed` (so pressing it always changes the map). */
@@ -76,7 +78,7 @@ export function trackForSeed(seed: string): TrackDefinition {
     return cached;
   }
   const preset = TRACK_PRESETS.find((p) => p.seed === seed);
-  const track = generateTrack(seed, preset?.name ?? `Circuit ${seed}`, preset ? { layout: preset.layout, theme: preset.theme } : {}).track;
+  const track = generateTrack(seed, preset?.name ?? `Circuit ${seed}`, preset ? { layout: preset.layout, theme: preset.theme, speedway: preset.speedway } : {}).track;
   cache.set(seed, track);
   if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value!);
   return track;

@@ -22,7 +22,10 @@ const SNAPSHOT_BUFFER = 40;
 const HISTORY = 240;
 const POSITION_TOLERANCE = 0.12;
 const VELOCITY_TOLERANCE = 0.4;
-const CORRECTION_DECAY = 10;
+/** Fast cars move over a metre per tick, so the tolerances widen with speed (per m/s) to avoid needless replays. */
+const POSITION_TOLERANCE_PER_SPEED = 0.004;
+const VELOCITY_TOLERANCE_PER_SPEED = 0.01;
+const CORRECTION_DECAY = 7;
 const MAX_CATCH_UP = 8;
 const SNAP_DISTANCE = 6;
 /** Rival proxies touch only cars: they are moved to the snapshot every frame, never by the track. */
@@ -208,7 +211,10 @@ export default class OnlineRaceSession {
     const positionError = Math.hypot(predicted.p[0] - serverState.p[0], predicted.p[1] - serverState.p[1], predicted.p[2] - serverState.p[2]);
     const velocityError = Math.hypot(predicted.v[0] - serverState.v[0], predicted.v[2] - serverState.v[2]);
     // Status-only fields never need a replay, but keep them authoritative.
-    if (positionError < POSITION_TOLERANCE && velocityError < VELOCITY_TOLERANCE) {
+    const speed = Math.hypot(serverState.v[0], serverState.v[2]);
+    const positionTolerance = POSITION_TOLERANCE + speed * POSITION_TOLERANCE_PER_SPEED;
+    const velocityTolerance = VELOCITY_TOLERANCE + speed * VELOCITY_TOLERANCE_PER_SPEED;
+    if (positionError < positionTolerance && velocityError < velocityTolerance) {
       this.car.nitro = serverState.nitro;
       return;
     }

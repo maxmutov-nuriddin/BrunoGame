@@ -28,6 +28,7 @@ const NITRO_MIN_TO_START = 8;
 const DRIFT_MIN_SPEED = 11;
 const DRIFT_MIN_STEER = 0.15;
 const DRIFT_KEEP_SLIP = THREE.MathUtils.degToRad(12);
+const DRIFT_HOLD_STEER = 0.6;
 const DRIFT_MAX_DURATION = 8;
 const DRIFT_EXIT_BOOST_MIN_TIME = 0.6;
 const DRIFT_EXIT_BOOST_MAX_SLIP = THREE.MathUtils.degToRad(25);
@@ -40,8 +41,13 @@ const DRIFT_TARGET_YAW_RATE = 1.35;
 const DRIFT_YAW_GAIN = 7;
 /** Beyond this slip the rear tyres progressively regain grip, so drifts never become spins. */
 const DRIFT_SLIP_LIMIT = THREE.MathUtils.degToRad(40);
-/** Throttle keeps momentum through a drift (m/s² along the direction of travel). */
-const DRIFT_MOMENTUM = 4.5;
+/**
+ * Steering narrows to its high-speed lock by this speed (m/s) at the latest, so a very fast car is not
+ * twitchy at ordinary speeds. Every regular car tops out below it, so only hypercars notice.
+ */
+const STEER_FADE_SPEED = 44;
+/** With throttle held, a drift wins back lost speed up to its entry speed at this rate (m/s²). */
+const DRIFT_HOLD_RATE = 14;
 /** How fast sideways velocity turns into forward velocity while drifting (1/s); sets the steady slip angle. */
 const DRIFT_TRACTION = 1.7;
 const DRIFT_SPEED_LOSS = 0.05;
@@ -124,6 +130,7 @@ export default class VehiclePhysics {
   speed = 0;
   forwardSpeed = 0;
   braking = false;
+  private driftEntrySpeed = 0;
   reversing = false;
   /** Horizontal velocity change beyond normal driving in the last step (m/s). */
   impact = 0;
@@ -210,7 +217,7 @@ export default class VehiclePhysics {
     const targetForce = -drive * power * Math.sqrt(headroom);
     this.engineForce = this.braking ? 0 : THREE.MathUtils.damp(this.engineForce, targetForce, 6, dt);
 
-    const lock = THREE.MathUtils.lerp(h.steering, h.steeringAtSpeed, Math.min(this.speed / h.maxSpeed, 1)) * (this.drifting ? 1.35 : 1);
+    const lock = THREE.MathUtils.lerp(h.steering, h.steeringAtSpeed, Math.min(this.speed / Math.min(h.maxSpeed, STEER_FADE_SPEED), 1)) * (this.drifting ? 1.35 : 1);
     this.steerValue = THREE.MathUtils.damp(this.steerValue, input.steer * lock, 8, dt);
 
     this.applyWheels(input, throttle, dt);
@@ -395,6 +402,7 @@ export default class VehiclePhysics {
         this.drifting = true;
         this.driftTime = 0;
         this.driftCharge = 0;
+        this.driftEntrySpeed = Math.min(this.speed, this.handling.maxSpeed);
         this.events.push({ type: 'driftStart', value: this.speed });
       }
       return;
@@ -402,7 +410,9 @@ export default class VehiclePhysics {
 
     this.driftTime += dt;
     const slip = Math.abs(this.slipAngle);
-    const keep = (input.handbrake || slip > DRIFT_KEEP_SLIP) && this.speed > 7 && this.driftTime < DRIFT_MAX_DURATION;
+    // Steering into the slide with the throttle down holds the drift after the handbrake is released.
+    const committed = Math.abs(input.steer) > DRIFT_HOLD_STEER && input.throttle > 0;
+    const keep = (input.handbrake || slip > DRIFT_KEEP_SLIP || committed) && this.speed > 7 && this.driftTime < DRIFT_MAX_DURATION;
     if (keep) return;
 
     this.drifting = false;
@@ -509,8 +519,10 @@ export default class VehiclePhysics {
     this.body.applyTorqueImpulse({ x: this.up.x * yaw, y: this.up.y * yaw, z: this.up.z * yaw }, true);
     this.redirectSlide(dt);
 
-    if (throttle <= 0 || this.speed > this.handling.maxSpeed * 0.92 || this.speed < 1) return;
-    const push = this.mass * DRIFT_MOMENTUM * throttle * dt;
+    // Throttle holds the entry speed through the slide instead of scrubbing it off.
+    const deficit = this.driftEntrySpeed - this.speed;
+    if (throttle <= 0 || deficit <= 0 || this.speed < 1) return;
+    const push = this.mass * Math.min(DRIFT_HOLD_RATE * throttle * dt, deficit);
     const v = this.body.linvel();
     this.body.applyImpulse({ x: (v.x / this.speed) * push, y: 0, z: (v.z / this.speed) * push }, true);
   }

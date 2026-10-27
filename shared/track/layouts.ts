@@ -33,6 +33,17 @@ export function pickTheme(rng: Rng, layout: TrackLayout): TrackTheme {
   return rng.pick(['meadow', 'desert', 'snow', 'dusk'] as const);
 }
 
+/** Fills the world with long in-and-out sweepers: the longest lap, no hairpins. */
+export function speedwayPoints(rng: Rng): Point2[] {
+  const count = 14;
+  const step = (Math.PI * 2) / count;
+  return Array.from({ length: count }, (_, i) => {
+    const angle = i * step + rng.range(-0.08, 0.08) * step;
+    const radius = i % 2 === 0 ? rng.range(405, 411) : rng.range(330, 340);
+    return { x: Math.sin(angle) * radius, z: Math.cos(angle) * radius };
+  });
+}
+
 /** Big irregular loop: 12–17 control points, 2–3 of them pulled in hard to make hairpins. */
 export function loopPoints(rng: Rng): Point2[] {
   const count = rng.int(12, 17);

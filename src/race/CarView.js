@@ -95,20 +95,23 @@ export default class CarView {
       material.clippingPlanes = interior && cutaway ? cutaway : null;
       material.clipIntersection = true;
       material.needsUpdate = true;
-      if (material.name !== 'Glass') continue;
-      material.transparent = interior || this.ghost;
-      material.opacity = interior ? INTERIOR_GLASS_OPACITY : this.ghost ? GHOST_OPACITY : 1;
-      material.depthWrite = !interior && !this.ghost;
     }
+    this.applyOpacity();
   }
 
   setGhost(ghost) {
     if (ghost === this.ghost) return;
     this.ghost = ghost;
+    this.applyOpacity();
+  }
+
+  /** Ghosting fades the whole car; from the cockpit the glass stays see-through whatever the ghost state. */
+  applyOpacity() {
     for (const material of this.materials) {
-      material.transparent = ghost;
-      material.opacity = ghost ? GHOST_OPACITY : 1;
-      material.depthWrite = !ghost;
+      const interiorGlass = this.interior && material.name === 'Glass';
+      material.transparent = this.ghost || interiorGlass;
+      material.opacity = interiorGlass ? INTERIOR_GLASS_OPACITY : this.ghost ? GHOST_OPACITY : 1;
+      material.depthWrite = !material.transparent;
     }
   }
 

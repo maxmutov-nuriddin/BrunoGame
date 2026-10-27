@@ -206,8 +206,8 @@ export const VEHICLES: readonly VehicleDefinition[] = Object.freeze([
     id: 'phantom-e', resource: 'car-phantom-e', name: 'Phantom E', role: 'Electric hypercar: 0–100 in about 1 s, 300 km/h',
     file: 'phantom-e.glb', hidden: true,
     handling: {
-      mass: 1350, acceleration: 9000, electricThrust: 28, maxSpeed: 83.4, reverseSpeed: 14, steering: 0.44, steeringAtSpeed: 0.045, grip: 4.5,
-      sideGrip: 1.5, driftGrip: 0.34, braking: 14000, suspension: { stiffness: 62, travel: 0.26, compression: 5.2, relaxation: 6 }, nitro: { strength: 1.2, speedBonus: 0, burnRate: 30 },
+      mass: 1350, acceleration: 9000, electricThrust: 28, maxSpeed: 83.4, reverseSpeed: 14, steering: 0.42, steeringAtSpeed: 0.04, grip: 4.5,
+      sideGrip: 2.0, driftGrip: 0.4, braking: 14000, suspension: { stiffness: 62, travel: 0.26, compression: 5.2, relaxation: 6 }, nitro: { strength: 1.2, speedBonus: 0, burnRate: 30 },
       health: 110
     }
   })

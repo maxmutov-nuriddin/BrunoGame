@@ -303,7 +303,12 @@ export default class RaceSimulation {
     }
     if (car.isWrecked(this.tick)) return;
     car.flippedTicks = car.physics.up.y < 0.2 ? car.flippedTicks + 1 : 0;
-    if (y < RULES.fallResetHeight || car.flippedTicks > RULES.flippedTicksBeforeReset) this.respawn(car, 0, false);
+    // Wedged against a wall: the driver keeps pressing a pedal but the car does not move.
+    const pushing = car.prevInput.throttle !== 0 && car.frozenUntil <= this.tick;
+    car.stuckTicks = pushing && car.physics.speed < RULES.stuckSpeed ? car.stuckTicks + 1 : 0;
+    if (y < RULES.fallResetHeight || car.flippedTicks > RULES.flippedTicksBeforeReset || car.stuckTicks > RULES.stuckTicksBeforeReset) {
+      this.respawn(car, 0, false);
+    }
   }
 
   private handleGhost(car: RaceCar): void {

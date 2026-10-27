@@ -3,7 +3,7 @@ import { createRng, type Rng } from '../rng.ts';
 import { buildRacingLine } from './racingLine.ts';
 import { closedCatmullRom, curvatures, resampleClosed, signedArea, smoothClosed, type Point2 } from './spline.ts';
 import type { Checkpoint, GridSlot, PickupSpot, TrackCrossing, TrackDefinition, TrackLayout, TrackSample, TrackTheme } from './types.ts';
-import { bridgeRanges, buildOverpass, buildWaterBridges, figure8Points, findCrossing, loopPoints, pickLayout, pickTheme } from './layouts.ts';
+import { bridgeRanges, buildOverpass, buildWaterBridges, figure8Points, findCrossing, loopPoints, speedwayPoints, pickLayout, pickTheme } from './layouts.ts';
 import { validateTrack, type TrackIssue } from './validate.ts';
 
 export const TRACK_WIDTH = 18;
@@ -29,6 +29,8 @@ const CROSSING_KEEP_OUT = 30;
 export interface TrackOptions {
   layout?: TrackLayout;
   theme?: TrackTheme;
+  /** Long, flat, flowing loop with no hairpins and no jump: room for top speed. */
+  speedway?: boolean;
 }
 
 export interface GeneratedTrack {
@@ -47,7 +49,7 @@ export function generateTrack(seed: string, name = `Circuit ${seed}`, options: T
   const theme = options.theme ?? pickTheme(styleRng, layout);
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const rng = createRng(`${seed}|track|v${GENERATOR_VERSION}|${attempt}`);
-    const candidate = buildCandidate(rng, { seed, name, attempt, layout, theme });
+    const candidate = buildCandidate(rng, { seed, name, attempt, layout, theme, speedway: options.speedway === true });
     if (!candidate) {
       attempts.push({ attempt, issues: [{ code: 'shape', message: 'no straight long enough for the grid' }] });
       continue;
@@ -65,10 +67,12 @@ interface CandidateOptions {
   attempt: number;
   layout: TrackLayout;
   theme: TrackTheme;
+  speedway: boolean;
 }
 
 function buildCandidate(rng: Rng, options: CandidateOptions): TrackDefinition | null {
-  let points = closedCatmullRom(options.layout === 'figure8' ? figure8Points(rng) : loopPoints(rng), 24);
+  const outline = options.speedway ? speedwayPoints(rng) : options.layout === 'figure8' ? figure8Points(rng) : loopPoints(rng);
+  let points = closedCatmullRom(outline, 24);
   if (rng.chance(0.5)) points = points.reverse();
   points = resampleClosed(points, SAMPLE_SPACING);
 
@@ -97,8 +101,9 @@ function buildCandidate(rng: Rng, options: CandidateOptions): TrackDefinition | 
   const meeting = options.layout === 'figure8' ? findCrossing(flat, TRACK_WIDTH, length) : null;
   if (options.layout === 'figure8' && !meeting) return null;
   const keepOut = meeting ? [meeting.a, meeting.b].map((c) => [c - 90, c + 90] as [number, number]) : [];
-  const ramp = placeRamp(flat, rng, keepOut);
-  applyElevation(flat, rng, ramp);
+  const ramp = options.speedway ? null : placeRamp(flat, rng, keepOut);
+  if (options.speedway) flat.forEach((sample) => { sample.y = MIN_ROAD_HEIGHT; });
+  else applyElevation(flat, rng, ramp);
 
   let crossing: TrackCrossing | null = null;
   if (meeting) {
@@ -107,7 +112,8 @@ function buildCandidate(rng: Rng, options: CandidateOptions): TrackDefinition | 
   }
   if (options.layout === 'island' && !buildWaterBridges(flat, rng, startGuard, SAMPLE_SPACING)) return null;
   if (ramp && flat.slice(ramp.start - 30, ramp.end + 30).some((s) => s.bridge)) return null;
-  return assemble(flat, { ...options, source: 'generated', ramp, crossing });
+  const { speedway: _speedway, ...rest } = options;
+  return assemble(flat, { ...rest, source: 'generated', ramp, crossing });
 }
 
 function minRadius(points: readonly Point2[]): number {

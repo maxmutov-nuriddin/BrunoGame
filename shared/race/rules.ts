@@ -23,7 +23,9 @@ export const RULES = Object.freeze({
   manualResetCooldownTicks: seconds(3),
   manualResetFreezeTicks: seconds(0.6),
   flippedTicksBeforeReset: seconds(2.5),
-  stuckTicksBeforeReset: seconds(6),
+  stuckTicksBeforeReset: seconds(2.5),
+  /** Below this speed (m/s) with a pedal pressed, the car counts as stuck. */
+  stuckSpeed: 1.2,
   wrongWayTicks: seconds(1.2),
   wrongWaySpeed: 3,
   driftRewardRate: 14,
