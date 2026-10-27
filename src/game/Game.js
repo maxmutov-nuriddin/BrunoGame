@@ -270,9 +270,9 @@ export default class Game {
       kind: 'bot',
       difficulty: setup.difficulty
     }));
-    // The player starts mid-pack so there is someone to chase and someone to fend off.
+    // A different grid slot every race: sometimes on pole, sometimes chasing from the back.
     const all = [...bots];
-    all.splice(Math.min(all.length, Math.floor(all.length / 2) + 1), 0, you);
+    all.splice(rng.int(0, all.length), 0, you);
     return all;
   }
 

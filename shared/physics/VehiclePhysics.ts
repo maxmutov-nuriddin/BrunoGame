@@ -52,6 +52,8 @@ const DOWNFORCE = 0.65;
 const COAST_BRAKE = 200;
 /** Electric thrust fades to zero at this multiple of the top speed (drag holds the car at about top speed). */
 const ELECTRIC_FADE_MARGIN = 1.15;
+/** Electric cars brake with regeneration too: this share of their launch thrust, applied smoothly along the car. */
+const ELECTRIC_REGEN_SHARE = 0.6;
 /** Horizontal velocity change in one step that counts as a collision (m/s). */
 export const IMPACT_THRESHOLD = 1.2;
 /**
@@ -453,6 +455,18 @@ export default class VehiclePhysics {
     this.body.applyImpulse({ x: this.forward.x * impulse, y: 0, z: this.forward.z * impulse }, true);
   }
 
+  /** Regenerative braking: decelerates along the direction of travel, never locks a wheel, so the car stays straight. */
+  private applyElectricRegen(dt: number): void {
+    const h = this.handling;
+    if (h.electricThrust <= 0 || !this.braking || this.forwardSpeed <= 1) return;
+    const dv = Math.min(h.electricThrust * ELECTRIC_REGEN_SHARE * dt, this.forwardSpeed - 1);
+    const v = this.body.linvel();
+    const horizontal = Math.hypot(v.x, v.z);
+    if (horizontal < 1) return;
+    const impulse = dv * this.mass;
+    this.body.applyImpulse({ x: (-v.x / horizontal) * impulse, y: 0, z: (-v.z / horizontal) * impulse }, true);
+  }
+
   private applyAssists(input: DriveInput, throttle: number, dt: number): void {
     const m = this.mass;
     const v = this.body.linvel();
@@ -462,6 +476,7 @@ export default class VehiclePhysics {
     if (this.grounded) {
       this.airTime = 0;
       this.applyElectricThrust(throttle, dt);
+      this.applyElectricRegen(dt);
       this.body.applyImpulse({ x: 0, y: -DOWNFORCE * this.speed * this.speed * dt, z: 0 }, true);
       if (throttle === 0 && !this.nitroActive && Math.abs(this.forwardSpeed) > 0.1) {
         const roll = -Math.sign(this.forwardSpeed) * Math.min(Math.abs(this.forwardSpeed), ROLLING_RESISTANCE * 9.81 * dt) * m;

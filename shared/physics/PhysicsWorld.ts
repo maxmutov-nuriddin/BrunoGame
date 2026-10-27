@@ -87,7 +87,10 @@ export default class PhysicsWorld {
 
   createTrimesh(options: BodyOptions & { vertices: Float32Array; indices: Uint32Array }) {
     const rigidBody = this.createBody(options);
-    const collider = this.attach(RAPIER.ColliderDesc.trimesh(options.vertices, options.indices), rigidBody, options);
+    // Without internal-edge fixing, a chassis sliding over the seam between two road triangles can catch on it
+    // ("ghost collision") and stop dead or get flung up, which fast cars hit after every landing.
+    const desc = RAPIER.ColliderDesc.trimesh(options.vertices, options.indices, RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES);
+    const collider = this.attach(desc, rigidBody, options);
     return { rigidBody, collider };
   }
 

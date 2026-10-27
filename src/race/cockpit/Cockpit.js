@@ -18,6 +18,9 @@ const CLUSTER_REACH = 1.2;
 const WHEEL_TILT = { bus: -0.95, default: -0.45 };
 /** Instrument anchor above the belt line: keeps the dash top (anchor + 0.05) clear of the body's top surface. */
 const CUTAWAY_ABOVE_BELT = 0.12;
+/** Centre console width and its minimum gap to the steering wheel rim. */
+const CONSOLE_WIDTH = 0.24;
+const CONSOLE_WHEEL_GAP = 0.04;
 /** Cabin floor below the belt line, visible past the dash and steering wheel. */
 const FLOOR_BELOW_BELT = 0.3;
 
@@ -132,12 +135,14 @@ export default class Cockpit {
     this.box([0.22, 0.12, 0.012], [0, dashTop - 0.17, face], mat.screen);
     this.box([0.34, 0.14, 0.01], [width / 2 - 0.3, dashTop - 0.16, face], mat.trim);
     this.box([0.3, 0.12, 0.012], [width / 2 - 0.3, dashTop - 0.16, face + 0.003], mat.dash);
-    // Centre tunnel between the seats, below the eye line.
-    this.box([0.24, 0.12, z + 0.4 - dashBack], [0, cabin.belt - 0.24, (dashBack + z + 0.4) / 2], mat.trim);
-    this.box([0.24, 0.3, 0.6], [0, belt - 0.22, front + 0.75], mat.dash);
-    this.tube([0, belt - 0.1, z - 0.3], [0, belt - 0.02, z - 0.26], 0.012, mat.chrome);
+    // Centre tunnel between the seats, below the eye line. In narrow cabins the wheel sits near the middle,
+    // so the console moves aside to stay clear of the rim instead of cutting through it.
+    const cx = Math.max(0, x + this.style.wheel.radius + CONSOLE_WHEEL_GAP + CONSOLE_WIDTH / 2);
+    this.box([CONSOLE_WIDTH, 0.12, z + 0.4 - dashBack], [cx, cabin.belt - 0.24, (dashBack + z + 0.4) / 2], mat.trim);
+    this.box([CONSOLE_WIDTH, 0.3, 0.6], [cx, belt - 0.22, front + 0.75], mat.dash);
+    this.tube([cx, belt - 0.1, z - 0.3], [cx, belt - 0.02, z - 0.26], 0.012, mat.chrome);
     const knob = new THREE.Mesh(this.geometry(new THREE.SphereGeometry(0.028, 12, 8)), mat.accent);
-    knob.position.set(0, belt - 0.01, z - 0.26);
+    knob.position.set(cx, belt - 0.01, z - 0.26);
     this.group.add(knob);
   }
 
